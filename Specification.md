@@ -1,0 +1,462 @@
+# CamMonitor — System Specification
+
+## 1. Overview
+CamMonitor is a peer-to-peer camera monitoring Android application running across two device roles:
+* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio, supports customizable device naming/renaming, remote flashlight control, 2-way talkback, and battery-saving OLED black screen.
+* **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
+* **Diagnostics & Logging:** Integrated persistent file-based rolling logger. Logs connection states, WebRTC ICE steps, signaling envelopes, camera lifecycle, and security verifications to local files, complete with an in-app log viewer and export/share feature.
+* **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
+* **Platform & SDK Targets:**
+  * **Minimum SDK (`minSdk`):** `31` (Android 12)
+  * **Target SDK (`targetSdk`):** `37` (Android 17)
+  * **Compile SDK (`compileSdk`):** `37`
+  * **Native Binary Compatibility:** 16 KB ELF page-size alignment verified for WebRTC native libraries (`libjingle_peerconnection_so.so`), ensuring compliance with Android 15+ (API 35+) memory paging requirements.
+* **UI Architecture:** Built 100% with **Jetpack Compose** (Material 3) adhering strictly to modern Android and Compose best practices.
+* **Security Model:** **Strict Zero-Trust Access Control.** Only explicitly paired viewers can establish signaling, negotiate WebRTC, or receive media. Unauthorized or unauthenticated connection attempts are dropped with zero data leakage.
+* **Network & Infrastructure Scope:** 
+  * **Zero-Account Setup:** Requires no cloud accounts, no API keys, and no custom hosted servers.
+  * **Signaling:** Public TLS-encrypted MQTT broker (`broker.hivemq.com:8883` / `broker.emqx.io:8883`). All signaling payloads are authenticated and encrypted end-to-end.
+  * **NAT Traversal Scope:** Uses Google Public STUN (`stun:stun.l.google.com:19302`) + LAN direct host candidates. Direct P2P connection works across LAN, port-restricted cone NATs, and WAN whenever at least one device has a non-symmetric NAT or a public IP. Symmetric-to-symmetric NAT across separate WAN networks is explicitly out of scope.
+
+---
+
+## 2. Security Architecture & Access Control
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant PA as Camera (PA)
+    participant PB as Viewer (PB)
+    participant MQTT as Public MQTT Broker
+
+    Note over PA: User configures Camera Name<br/>Generate ephemeral OTP<br/>Show QR Code
+    PB->>PA: Scan QR (Reads PA ID, PA Name, PA PubKey, Ephemeral OTP)
+    Note over PB: Store PA Name & ID<br/>Generate PB ECDSA KeyPair
+    PB->>MQTT: Publish PAIR_REQUEST (Signed by PB PrivKey, Encrypted with HKDF(OTP))
+    MQTT->>PA: Forward PAIR_REQUEST
+    Note over PA: Verify OTP & PB Signature.<br/>Add PB PubKey to Whitelist.<br/>Invalidate OTP immediately.
+    PA->>MQTT: Publish PAIR_CONFIRM (Signed by PA PrivKey)
+    MQTT->>PB: Forward PAIR_CONFIRM
+    Note over PB: Pairing Complete. Store PA PubKey.
+```
+
+### 2.1 Cryptographic Primitives & Storage
+1. **Device Identity Keys:**
+   * Each device generates an asymmetric **ECDSA (secp256r1 / NIST P-256)** keypair stored in the **Android Keystore** (`AndroidKeyStore` provider).
+   * Private keys are hardware-backed (TEE/StrongBox) and never exportable in plaintext.
+2. **Key Storage & Whitelisting:**
+   * PA maintains an **Authorized Viewer Whitelist** (maximum 2 devices) containing:
+     * `viewerDeviceId`: String (UUID v4)
+     * `viewerPublicKey`: String (Base64 X.509 encoded public key)
+     * `deviceAlias`: String (e.g., "Dad's Pixel 8")
+     * `pairedTimestamp`: Long
+   * Whitelist and local device name are persisted in Android `EncryptedSharedPreferences` backed by `MasterKey`.
+
+### 2.2 Pairing Security Lifecycle & Device Naming
+* **Device Name Configuration on PA:**
+  * Default name generated as `"CamMonitor-" + last 4 chars of UUID` (e.g., `"CamMonitor-8A2F"`).
+  * User can customize/rename this at any time via PA's UI.
+  * Name length: 1 to 32 UTF-8 characters.
+* **Ephemeral One-Time Token (OTP):**
+  * The QR code payload contains a cryptographically random 256-bit pairing secret (`pairingOtp`).
+  * The OTP is **single-use and short-lived** (expires after 5 minutes or immediately upon a successful pairing).
+  * If the pairing screen on PA is dismissed or cancelled, the OTP is instantly discarded.
+* **Mutual Authentication Handshake:**
+  * PB encrypts its enrollment payload with a key derived from the OTP via HKDF-SHA256.
+  * PA verifies the OTP. If valid, PA pins PB's public key into its hardware-backed whitelist.
+  * Once 2 viewers are paired, PA closes the pairing interface and rejects any further pairing requests.
+
+### 2.3 Signaling Message Authentication & Anti-Replay
+Every signaling envelope sent over the public MQTT broker is structured as:
+
+```json
+{
+  "senderId": "pb-uuid",
+  "recipientId": "pa-uuid",
+  "timestamp": 1728723600000,
+  "nonce": "random-16-bytes-hex",
+  "ciphertext": "base64-aes-256-gcm-payload",
+  "iv": "base64-12-bytes-iv",
+  "tag": "base64-16-bytes-gcm-tag",
+  "signature": "base64-ecdsa-signature-of-envelope"
+}
+```
+
+* **Verification Protocol on PA:**
+  1. **Whitelist Check:** Is `senderId` present in PA's Authorized Viewer Whitelist? If NO $\to$ Silently discard.
+  2. **Replay Window Check:** Is `|currentTime - timestamp| < 30 seconds` AND is `nonce` unseen? If NO $\to$ Silently discard.
+  3. **Signature Verification:** Verify `signature` over `(senderId + recipientId + timestamp + nonce + ciphertext)` using the stored `viewerPublicKey`. If Invalid $\to$ Silently discard.
+  4. **Decryption:** Decrypt `ciphertext` via AES-256-GCM using the shared secret derived from ECDH (PA Private Key + PB Public Key).
+* **Zero-Leakage Guarantee:** Unauthorized third parties cannot trigger camera activation, read SDP metadata, or inject malicious SDP offers.
+
+### 2.4 Dynamic Device Renaming Synchronization
+* When a user renames PA while active:
+  1. PA updates local persistent storage.
+  2. PA broadcasts an authenticated control command over all active WebRTC DataChannels:
+     ```json
+     {"cmd": "RENAME", "name": "Baby Nursery Cam"}
+     ```
+  3. Active PB viewers instantly update their top HUD title and local database record for this PA.
+  4. If PB is disconnected when PA is renamed, PA also sends the updated name in the initial WebRTC connection handshake metadata once PB reconnects.
+
+### 2.5 Media Stream & WebRTC Security
+* **DTLS-SRTP Fingerprint Verification:**
+  * WebRTC media is encrypted end-to-end via DTLS-SRTP.
+  * The DTLS certificate fingerprint is embedded within the authenticated and signed SDP offer/answer.
+* **DataChannel Command Authentication:**
+  * Remote commands (`TORCH`, `PTT`, `RENAME`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
+
+### 2.6 Revocation & Unpairing
+* PA provides a "Manage Paired Devices" screen.
+* When a user removes a viewer:
+  1. PB's public key is wiped from the Whitelist.
+  2. Any active WebRTC `PeerConnection` with that viewer is immediately terminated.
+  3. Subsequent signaling messages from that viewer fail the whitelist check and are dropped.
+
+---
+
+## 3. Persistent Diagnostics & File Logging System
+
+### 3.1 Architecture & Storage
+* **Location:** Written to application-specific internal/external storage:
+  `context.getExternalFilesDir("logs")/cammonitor.log`
+  *(Accessible without root via USB/ADB or through the app's in-app share sheet).*
+* **Rolling Policy:**
+  * Max file size: **2 MB** per file.
+  * File rotation: Keeps up to **3 rolling backups** (`cammonitor.log`, `cammonitor.1.log`, `cammonitor.2.log`).
+  * Total disk budget: Capped at **~6 MB** maximum.
+* **Log Entry Format:**
+  `[2026-10-12 17:20:01.432] [INFO] [WebRTCManager] ICE connection state changed: CONNECTED`
+
+### 3.2 Key Events Logged
+1. **Signaling & MQTT:**
+   * MQTT connection state (`CONNECTING`, `CONNECTED`, `TLS_ESTABLISHED`, `DISCONNECTED`).
+   * Topic subscriptions and publications (sanitized, excluding raw encryption keys).
+   * Handshake drop events with reason codes (`REJECT_UNAUTHORIZED_SENDER`, `REJECT_REPLAY_DETECTED`, `REJECT_MAX_CAPACITY`).
+2. **WebRTC & Media Pipeline:**
+   * Local & Remote SDP generation and set state (`OfferCreated`, `AnswerApplied`).
+   * ICE gathering state, candidate counts (Host, Srflx/STUN), and pair selection.
+   * `IceConnectionState` & `PeerConnectionState` transitions (`CHECKING`, `CONNECTED`, `FAILED`, `DISCONNECTED`).
+   * Camera lifecycle events: Camera open, frame encoder initialization, sensor errors, torch toggles.
+3. **Power & App Lifecycle:**
+   * Foreground Service startup, shutdown, and notification bindings.
+   * OLED Black Screen activations, tap-to-wake events, and 60-second idle countdown triggers.
+   * 60s viewer absence camera release triggers.
+4. **DataChannel Messages:**
+   * Inbound and outbound control messages (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`).
+
+---
+
+## 4. UI Architecture & Jetpack Compose Standards
+
+### 4.1 Design Guidelines & Theme
+* **Toolkit:** Jetpack Compose with Material 3 (`androidx.compose.material3`).
+* **Design Philosophy:** Dark-first UI (OLED power conservation, minimal distraction for monitor usage).
+* **Color Palette (Dark Theme Tokens):**
+  * `Primary`: Cyan / Teal Accent (`#00E5FF` / `#00B4D8`) — high visibility for status indicators.
+  * `Surface`: Deep Charcoal (`#121212`), `SurfaceContainer`: (`#1E1E1E`), `SurfaceContainerHigh`: (`#2A2A2A`).
+  * `StatusLive`: Emerald Green (`#00E676`).
+  * `StatusWarning`: Amber (`#FFD600`).
+  * `StatusError`: Sunset Red (`#FF5252`).
+* **Typography:** Material 3 Type Scale with monospace formatting for technical metrics (FPS, resolution, timers, logs).
+
+### 4.2 State Architecture & Recomposition Best Practices
+* **Unidirectional Data Flow (UDF):**
+  * State flows down via immutable `@Immutable` data classes exposed by `StateFlow<UiState>`.
+  * Events flow up via ViewModel function invocations or UI event lambdas.
+  * UI state collected via `collectAsStateWithLifecycle()` in composable functions.
+* **Stateful vs. Stateless Pattern:**
+  * Every screen is structured as:
+    * `XxxRoute` (Stateful): Injects `ViewModel`, handles navigation events.
+    * `XxxScreen` (Stateless): Takes `uiState` and callback lambdas (`onEvent: () -> Unit`). Enables Compose Previews and isolated unit testing.
+* **Hybrid View Interop (`AndroidView`):**
+  * WebRTC's `SurfaceViewRenderer` and Camera preview are wrapped via `AndroidView` with explicit `DisposableEffect` cleanups:
+    * `SurfaceViewRenderer.release()` called on disposal.
+    * Camera2 / CameraX providers unbound on disposal.
+
+---
+
+## 5. Detailed UI Screen Specifications
+
+### 5.1 Screen 1: Mode Selection (Home Screen)
+* **Top App Bar:**
+  * Title: `"CamMonitor"` (HeadlineMedium, bold).
+  * Actions:
+    * `IconButton(Icons.Default.Description)` $\to$ Opens **In-App Log Viewer**.
+    * `IconButton(Icons.Default.Devices)` $\to$ Opens **Paired Devices Management**.
+* **Body Layout:**
+  * Centered vertical column with two primary Material 3 `ElevatedCard` components:
+  1. **Camera Mode Card:**
+     * Icon: `Icons.Default.Videocam` (48dp, Primary color tint).
+     * Title: `"Start Camera Mode"` (TitleLarge).
+     * Subtitle: `"Turn this device into a camera monitor sender"` (BodyMedium, subtle gray).
+     * Current Camera Name Pill: e.g. `"Name: Living Room Cam"` with edit pencil icon button.
+     * Click Action: Navigates to Camera Mode flow.
+  2. **Viewer Mode Card:**
+     * Icon: `Icons.Default.Visibility` (48dp, Secondary color tint).
+     * Title: `"Start Viewer Mode"` (TitleLarge).
+     * Subtitle: `"Watch live video stream from a paired camera"` (BodyMedium, subtle gray).
+     * Trailing: Forward arrow indicator.
+     * Click Action: Navigates to Viewer Mode flow.
+* **Camera Name Edit Dialog (Compose AlertDialog):**
+  * Trigger: Tapping the edit pencil on Camera Mode card or inside Camera Mode settings.
+  * Title: `"Rename Camera"`
+  * Input: `OutlinedTextField` with character counter (`0/32`) and single-line restriction.
+  * Buttons: `[Cancel]` and `[Save]`.
+* **Bottom Status Banner:**
+  * Shows current network status chip (`Wi-Fi: <SSID>` or `Cellular`).
+
+---
+
+### 5.2 Screen 2: Pairing Flows
+
+#### 5.2.1 PA — Camera Pairing QR Display Screen
+* **Top Bar:** Title `"Pair New Viewer"`, navigation back/cancel button.
+* **Center Box:**
+  * White card container (`Surface(color = Color.White, shape = RoundedCornerShape(16.dp))`) with 16dp padding to render the QR Code bitmap with high contrast.
+  * QR Code size: 260dp $\times$ 260dp.
+* **Below QR Code:**
+  * **Device Name Header:** Shows current name (e.g. `"Broadcasting as: Living Room Cam"`).
+  * **Expiration Timer Pill:** Countdown timer showing remaining OTP validity (`Expires in 04:59`). Uses `StatusWarning` color if $< 60$s.
+  * **Helper Instructions:** `"Open CamMonitor on Device B, tap 'Start Viewer Mode' and scan this code."`
+  * **Slot Indicator:** `"Slot 1 of 2 Available"`.
+* **Bottom Action:**
+  * `OutlinedButton`: `"Cancel Pairing"` $\to$ Invalidates OTP, returns to Home Screen.
+
+#### 5.2.2 PB — Viewer Pairing Scanner Screen
+* **Viewfinder:** Full-screen CameraX preview rendered via `AndroidView`.
+* **Overlay:**
+  * Semi-transparent dark mask with a central transparent cutout (260dp $\times$ 260dp) and rounded corners.
+  * Cyan scanning reticle / animated line moving vertically inside the cutout.
+* **Top Bar:** Back button and Flashlight toggle button (to illuminate paper or dark screens).
+* **Bottom Prompt:** Pill card with `"Align QR code within the frame to pair"`.
+* **Error State:** If camera permission denied, displays standard M3 permission rationale card with a `"Grant Camera Permission"` button.
+
+---
+
+### 5.3 Screen 3: Camera Mode (PA - Sender)
+
+#### 5.3.1 Active Streaming View
+* **Background:** Live camera preview (`SurfaceView` / Camera2 preview).
+* **Top Status HUD (Semi-transparent dark pill overlays):**
+  * **Device Name & Live Badge:** Emerald green pulsating dot + text `"[Live] Living Room Cam (720p@20fps)"`.
+  * **Rename Action:** Subtle pencil icon next to name to trigger the Rename Dialog on the fly.
+  * **Viewer Count Pill:** Eye icon + text `"1 / 2 Viewers"` (or `"2 / 2 Viewers"`).
+  * **Flashlight Status:** Torch icon (lit yellow if active, gray if inactive).
+* **Bottom Control Bar (SurfaceContainer semi-transparent overlay):**
+  * `FilledTonalButton`: `"Turn Off Display (OLED Saver)"` $\to$ Manually triggers black screen mode.
+  * `Button(colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error))`: `"Exit Camera Mode"` $\to$ Confirms and terminates stream.
+
+#### 5.3.2 Power-Saving OLED Black Screen View
+* **Visual:** Full-screen pure black `#000000` `Box(Modifier.fillMaxSize().background(Color.Black))`.
+* **Hardware State:**
+  * Window brightness set to `0.01f`.
+  * Status bars and navigation bars completely hidden via `WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
+* **Touch Interaction:**
+  * The entire screen has a `clickable` / `pointerInput` listener.
+  * A single tap instantly wakes the screen: restores standard brightness, reveals HUD controls, and resets the 60-second idle timer.
+* **Burn-in Protection:** No static persistent text is rendered.
+
+#### 5.3.3 Inactivity / Standby View (After 60s of 0 Viewers)
+* **Background:** Dark `#121212` background (Camera hardware completely closed and released).
+* **Center Card:**
+  * Icon: `Icons.Default.PauseCircleOutline` (64dp, Warning Amber).
+  * Title: `"Camera Paused"` (HeadlineSmall).
+  * Description: `"No viewers connected for 1 minute. Camera sensor stopped to preserve battery."` (BodyMedium).
+  * Spacing: 24dp vertical gap.
+* **Actions (Vertical column):**
+  * `Button`: `"Start Camera Mode"` $\to$ Re-opens camera, restarts listener, resets 60s timer.
+  * `OutlinedButton`: `"Exit Camera Mode"` $\to$ Terminates service, returns to Home.
+
+---
+
+### 5.4 Screen 4: Viewer Mode (PB - Receiver)
+
+#### 5.4.1 Video Player Surface
+* **Viewport:** Full-screen WebRTC `SurfaceViewRenderer` wrapped in `AndroidView`.
+* **Rotation Handling:** The view or video frame is dynamically rotated ($0^\circ \to 90^\circ \to 180^\circ \to 270^\circ$) based on `uiState.rotationDegrees`.
+* **Touch to Toggle Controls:** Single tap on video toggles overlay HUD visibility (auto-hides after 5s of inactivity).
+
+#### 5.4.2 Top Overlay HUD
+* **Left:** `IconButton(Icons.Default.ArrowBack)` $\to$ `"Exit Viewer Mode"`.
+* **Center:**
+  * **Title:** Camera device name (e.g. `"Living Room Cam"`). Dynamically updates if PA is renamed.
+  * **Subtitle badge:** Status indicator (`"Live • 720p 20fps"`, `"Reconnecting..."`, `"Offline"`).
+* **Right:**
+  * **Torch Toggle Button:** Lightbulb/Flash icon. Yellow when PA flashlight is on, outline when off. Tapping sends `TORCH` command via DataChannel.
+
+#### 5.4.3 Bottom Overlay HUD
+* **Row of Floating Action Controls:**
+  1. **Rotate 90° Button (`FilledTonalIconButton`):**
+     * Icon: `Icons.Default.Rotate90DegreesCw`.
+     * Tapping increments rotation: $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.
+  2. **Push-to-Talk (PTT) Intercom Button (Center, Prominent Pill):**
+     * Design: Large capsule button (`Button` with `shape = CircleShape`).
+     * Normal state: Mic icon + `"Hold to Talk"`. Container color: `SecondaryContainer`.
+     * Pressed state: Active soundwave animation + `"Transmitting..."`. Container color: `Primary` (pulsing).
+     * Gesture: Managed via `Modifier.pointerInput` detecting press-down (`PTT_START`) and release/cancel (`PTT_STOP`).
+  3. **Audio Mute/Unmute Button (`FilledTonalIconToggleButton`):**
+     * Icon: `VolumeUp` / `VolumeOff`. Toggles incoming PA audio playback.
+
+#### 5.4.4 Connection & Error State Overlays
+* **Connecting / Reconnecting State:**
+  * Centered semi-transparent scrim with `CircularProgressIndicator` and text: `"Connecting to camera..."` / `"Reconnecting (Attempt 2/5)..."`.
+* **Symmetric NAT Traversal Error Banner:**
+  * Bottom sheet or modal dialog:
+    * Title: `"Connection Failed"`.
+    * Message: `"Direct P2P traversal failed due to Carrier Symmetric NAT. Please connect devices to Wi-Fi or the same local network."`.
+    * Actions: `[Retry]` and `[Exit]`.
+
+---
+
+### 5.5 Screen 5: Manage Paired Devices Screen
+* **Top Bar:** Title `"Paired Devices"`, Back button.
+* **Device List:**
+  * Displays paired cards (up to 2):
+    * Device alias and ID snippet (e.g., `Dad's Phone (PB) • Paired Oct 12`).
+    * Trailing `IconButton(Icons.Default.DeleteOutline)` with red tint.
+* **Delete Confirmation Dialog:**
+  * Dialog: `"Revoke Device Access?"`
+  * Text: `"This viewer will immediately be disconnected and unable to reconnect without scanning a new QR code."`
+  * Confirm button: `"Revoke"` (destructive red).
+* **Pair New Viewer Button:**
+  * Visible only if paired count $< 2$.
+  * Launches Screen 5.2.1 (PA Pairing QR code).
+
+---
+
+### 5.6 Screen 6: In-App Diagnostics & Log Viewer Screen
+* **Top Bar:**
+  * Title: `"System Logs"` (HeadlineSmall).
+  * Navigation icon: Back arrow.
+  * Action 1: `IconButton(Icons.Default.Share)` $\to$ Triggers Android Share Sheet with `cammonitor.log` attached via `FileProvider`.
+  * Action 2: `IconButton(Icons.Default.DeleteSweep)` $\to$ Clears current log file with confirmation.
+* **Filter Row:**
+  * Filter chips: `[ALL]`, `[INFO]`, `[WARN]`, `[ERROR]`, `[WebRTC]`, `[MQTT]`.
+* **Log List:**
+  * LazyColumn rendering monospaced log rows (`FontFamily.Monospace`, 11sp).
+  * Color coding:
+    * `ERROR`: Sunset Red (`#FF5252`).
+    * `WARN`: Amber (`#FFD600`).
+    * `INFO`: White / Light Gray (`#E0E0E0`).
+    * `DEBUG`: Dim Gray (`#757575`).
+* **Auto-Scroll Behavior:** Floating "Scroll to Bottom" button appears when the user scrolls up.
+
+---
+
+## 6. Architecture & Zero-Config Networking
+
+```mermaid
+flowchart LR
+    PA["Device PA (Camera Mode)"] <-->|E2EE & Signed MQTT| MQTT["Public MQTT Broker (HiveMQ / EMQX TLS)"]
+    PB["Device PB (Viewer Mode)"] <-->|E2EE & Signed MQTT| MQTT
+    PA <-->|Public STUN| STUN["Google Public STUN (Port Discovery)"]
+    PB <-->|Public STUN| STUN
+    PA ===|Direct WebRTC P2P (DTLS-SRTP Media + DataChannel)| PB
+```
+
+### 6.1 Media Engine & Transport
+* **Core Engine:** WebRTC (Google WebRTC Android SDK).
+* **Video Pipeline:** Camera2 API $\to$ `SurfaceTextureHelper` $\to$ Hardware H.264 / VP8 encoder.
+  * Default resolution: 1280x720 (720p).
+  * Target frame rate: 20 FPS.
+  * Target bitrate: ~1.5 Mbps, dynamic down to 500 Kbps on packet loss.
+* **Audio Pipeline:** 16 kHz mono Opus codec. Hardware Acoustic Echo Cancellation (AEC) and Noise Suppression (NS) enabled.
+* **Data Channel:** WebRTC `RTCDataChannel` (label: `"control"`, ordered, reliable) for low-latency commands (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`).
+
+### 6.2 NAT Traversal Scope & Limitations
+* **STUN Server:** `stun:stun.l.google.com:19302`
+* **Supported Scenarios:**
+  * LAN / Same Wi-Fi network (Direct P2P via local host candidate).
+  * One phone on public IP / port-forwarded, other phone behind any NAT (including Symmetric NAT).
+  * Both phones behind Cone / Port-Restricted NAT.
+* **Out-of-Scope Scenario:** Both phones behind Carrier-Grade Symmetric NAT simultaneously across WAN.
+
+---
+
+## 7. Android Platform & OS Compatibility (minSdk 31, targetSdk 37)
+
+### 7.1 SDK Constraints & Platform Requirements
+* **`minSdk = 31` (Android 12):**
+  * Guarantees support for `SplashScreen` API (`androidx.core:core-splashscreen`).
+  * Enforces Android 12 background service launch restrictions (Foreground Service must start with immediate user action or active foreground state).
+* **`compileSdk = 37` & `targetSdk = 37` (Android 17):**
+  * **Mandatory Foreground Service Types (API 34+):** Service declared with `android:foregroundServiceType="camera|connectedDevice"`.
+  * **Runtime Notification Permission (API 33+):** `POST_NOTIFICATIONS` requested prior to launching PA Camera Service.
+  * **16 KB Memory Page Size Support (API 35+):** Native `.so` libraries must be built with `-Wl,-z,max-page-size=16384` to prevent crashes on modern 16KB page size devices.
+  * **Edge-to-Edge by Default (API 35+):** Enforced full edge-to-edge layout via `enableEdgeToEdge()` in Jetpack Compose activities.
+
+### 7.2 Required Android Permissions & Manifest Configuration
+
+| Permission | Device PA | Device PB | Minimum API | Purpose |
+|---|:---:|:---:|:---:|---|
+| `android.permission.CAMERA` | Yes | Yes (Pairing) | 31 | Video capture & QR code scanner |
+| `android.permission.RECORD_AUDIO` | Yes | Yes (PTT) | 31 | Audio streaming & Push-to-Talk intercom |
+| `android.permission.INTERNET` | Yes | Yes | 31 | WebRTC & MQTT signaling |
+| `android.permission.ACCESS_NETWORK_STATE` | Yes | Yes | 31 | Network type detection & ICE restart |
+| `android.permission.POST_NOTIFICATIONS` | Yes | No | 33 | Sticky Foreground Service notification |
+| `android.permission.FOREGROUND_SERVICE` | Yes | No | 31 | Background service persistence |
+| `android.permission.FOREGROUND_SERVICE_CAMERA` | Yes | No | 34 | Background camera capture permission |
+| `android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE` | Yes | No | 34 | Network streaming background permission |
+| `android.permission.WAKE_LOCK` | Yes | No | 31 | Prevent CPU sleep during OLED black screen |
+| `android.permission.MODIFY_AUDIO_SETTINGS` | Yes | Yes | 31 | Speakerphone & Hardware AEC routing |
+
+### 7.3 FileProvider Configuration (Log Export)
+* Manifest includes `androidx.core.content.FileProvider` to safely share `cammonitor.log` via Android's share sheet without requiring legacy external storage permissions:
+  * Authority: `${applicationId}.fileprovider`
+  * Path definition: `<files-path name="logs" path="logs/" />` and `<external-files-path name="ext_logs" path="logs/" />`.
+
+---
+
+## 8. Testability Architecture & Test Suites
+
+### 8.1 Design for Testability (Inversion of Control)
+To achieve fast, reliable, and deterministic test execution without reliance on physical Android hardware:
+1. **Clock & Time Abstraction (`TimeProvider`):**
+   * Interface `TimeProvider` providing `currentTimeMillis()` and `delay()`.
+   * Replaced by `TestCoroutineScheduler` in unit tests, allowing 60-second timeouts, 5-minute OTP expirations, and 30-second replay windows to advance virtually in **< 5 milliseconds**.
+2. **Hardware & Network Decoupling via Interfaces:**
+   * `SignalingClient`: Abstracts MQTT broker communication (faked with in-memory Channel in tests).
+   * `PeerConnectionClient`: Abstracts WebRTC factory, SDP exchange, and DataChannel events.
+   * `CameraCaptureManager`: Abstracts Camera2/CameraX hardware preview and torch control.
+   * `SecurityRepository`: Abstracts KeyStore, encryption, and whitelist storage.
+3. **StateFlow & Turbine Testing:**
+   * ViewModels expose purely immutable `StateFlow<UiState>`, verified deterministically with Cash App **Turbine** to test every emission without race conditions.
+
+### 8.2 Test Suites Matrix
+
+```mermaid
+flowchart TD
+    TS["Test Strategy"] --> UT["Unit Tests (JVM / Coroutines)"]
+    TS --> IT["Integration Tests (Robolectric / Fake Network)"]
+    TS --> CT["Compose UI Tests (createComposeRule)"]
+```
+
+#### 8.2.1 Security & Cryptography Unit Tests (`test/security/`)
+* `testQrPayloadSerializationAndDeserialization()`: Verifies schema versioning, base64 key decoding, and JSON format.
+* `testEcdsaSignatureValidation_ValidSignature_Passes()`: Verifies message envelope authentication passes with valid sender key.
+* `testEcdsaSignatureValidation_TamperedCiphertext_Fails()`: Verifies that changing 1 bit in ciphertext fails signature verification and discards envelope.
+* `testAntiReplay_TimestampOlderThan30Seconds_Discards()`: Verifies expired envelopes are silently dropped.
+* `testAntiReplay_DuplicateNonce_Discards()`: Verifies duplicate nonce within window is rejected.
+* `testWhitelistEnforcement_UnknownSender_Discards()`: Verifies unauthenticated sender is dropped without decoding SDP.
+* `testOtpExpiration_After5Minutes_InvalidatesHandshake()`: Verifies OTP cannot be reused after expiry.
+
+#### 8.2.2 State Machine & Signaling Unit Tests (`test/signaling/`)
+* `testCameraMode_PairingCountZero_TransitionsToQrDisplay()`: Verifies initial launch starts in QR pairing state.
+* `testCameraMode_PairingCountGreaterThanZero_TransitionsToCameraActive()`: Verifies paired device opens camera immediately.
+* `testCameraMode_ViewerConnects_StreamsAndResetsInactivityTimer()`: Verifies connection resets 60s timer.
+* `testCameraMode_ZeroViewersFor60Seconds_TransitionsToPausedState()`: Advances virtual time by 60s $\to$ asserts camera sensor is closed.
+* `testCameraMode_MaxViewersReached_RejectsThirdConnection()`: Connects 2 viewers $\to$ verifies 3rd connection receives `REJECT_MAX_CAPACITY`.
+* `testCameraMode_Rename_BroadcastsDataChannelCommand()`: Renames camera $\to$ verifies JSON `{"cmd":"RENAME"}` sent to all active viewers.
+
+#### 8.2.3 DataChannel & Control Unit Tests (`test/datachannel/`)
+* `testDataChannelCommandParser_ValidTorchCommand_ParsesCorrectly()`: Verifies `TORCH` true/false parsing.
+* `testDataChannelCommandParser_ValidPttCommands_TogglesAudioTrack()`: Verifies `PTT_START` and `PTT_STOP` parse to correct audio states.
+* `testRotationState_TapRotateButton_IncrementsBy90Degrees()`: Verifies sequence $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.
+
+#### 8.2.4 Jetpack Compose UI Tests (`androidTest/ui/`)
+* `homeScreen_displaysModeSelectionCards()`: Asserts "Start Camera Mode" and "Start Viewer Mode" cards are visible and clickable.
+* `cameraMode_inactivity60Seconds_rendersBlackScreen()`: Simulates 60s idle $\to$ verifies full-screen black overlay is rendered.
+* `cameraMode_tapBlackScreen_restoresControlsAndResetsTimer()`: Clicks black screen $\to$ verifies controls re-appear.
+* `viewerMode_pttButton_pressAndRelease_triggersCallbacks()`: Uses Compose `performTouchInput` (down $\to$ up) to verify PTT start and stop callback events.
+* `logViewerScreen_filterChipSelection_filtersDisplayedLogs()`: Taps `[ERROR]` filter chip $\to$ asserts only error rows are displayed.
