@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.service
+package com.a0soft.gphone.camonitor.service
 
 import android.app.Notification
 import android.app.Service
@@ -15,6 +15,7 @@ import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.log.AppLogger
+import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,7 @@ class CameraMonitorService : Service() {
     val streamingState: StateFlow<CameraStreamingState> = _streamingState.asStateFlow()
 
     private var inactivityJob: Job? = null
+    private var batteryBroadcastJob: Job? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): CameraMonitorService = this@CameraMonitorService
@@ -104,21 +106,43 @@ class CameraMonitorService : Service() {
             }
         }
 
-        // Track active viewers count for 60s timeout
+        // Track active viewers count for 60s timeout and battery broadcast
         serviceScope.launch {
             app.webRtcManager.activeViewersCount.collect { count ->
                 if (count > 0) {
                     _streamingState.value = CameraStreamingState.STREAMING
                     cancelInactivityTimer()
+                    startBatteryBroadcast()
                 } else if (_streamingState.value == CameraStreamingState.STREAMING ||
                     _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS) {
                     _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
+                    stopBatteryBroadcast()
                     startInactivityTimer()
                 }
             }
         }
 
         startInactivityTimer()
+    }
+
+    private fun startBatteryBroadcast() {
+        if (batteryBroadcastJob != null) return
+        batteryBroadcastJob = serviceScope.launch {
+            while (isActive) {
+                val bInfo = BatteryHelper.getBatteryInfo(this@CameraMonitorService)
+                if (bInfo.percentage >= 0) {
+                    CamMonitorApp.instance.webRtcManager.broadcastDataChannelCommand(
+                        ControlCommand.Battery(bInfo.percentage, bInfo.isCharging)
+                    )
+                }
+                delay(15_000L)
+            }
+        }
+    }
+
+    private fun stopBatteryBroadcast() {
+        batteryBroadcastJob?.cancel()
+        batteryBroadcastJob = null
     }
 
     private fun startInactivityTimer() {
@@ -268,6 +292,17 @@ class CameraMonitorService : Service() {
             is ControlCommand.Rename -> {
                 // Not handled by sender
             }
+            is ControlCommand.Battery -> {
+                // Not handled by sender
+            }
+            is ControlCommand.QueryBattery -> {
+                val bInfo = BatteryHelper.getBatteryInfo(this)
+                if (bInfo.percentage >= 0) {
+                    app.webRtcManager.broadcastDataChannelCommand(
+                        ControlCommand.Battery(bInfo.percentage, bInfo.isCharging)
+                    )
+                }
+            }
         }
     }
 
@@ -279,6 +314,7 @@ class CameraMonitorService : Service() {
         super.onDestroy()
         AppLogger.i(tag, "CameraMonitorService destroyed")
         cancelInactivityTimer()
+        stopBatteryBroadcast()
         serviceScope.cancel()
         CamMonitorApp.instance.webRtcManager.closeAll()
         if (wakeLock?.isHeld == true) {

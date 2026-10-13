@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.a0soft.gphone.camonitor.CamMonitorApp
@@ -29,6 +30,8 @@ import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import com.a0soft.gphone.camonitor.log.AppLogger
+import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
+import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.theme.StatusLive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -56,6 +59,10 @@ fun ViewerModeScreen(
     var isTorchActive by remember { mutableStateOf(false) }
     var isPttPressed by remember { mutableStateOf(false) }
     var hasSymmetricNatError by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    var paBatteryInfo by remember { mutableStateOf<BatteryInfo?>(null) }
+    var pbBatteryInfo by remember { mutableStateOf(BatteryHelper.getBatteryInfo(context)) }
 
     var surfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
 
@@ -116,6 +123,8 @@ fun ViewerModeScreen(
             MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
         )
+
+        webRtcManager.createDataChannelForSender(targetCamera.deviceId)
 
         var localOfferDesc: SessionDescription? = null
 
@@ -203,16 +212,33 @@ fun ViewerModeScreen(
         }
     }
 
-    // Observe DataChannel commands from PA (e.g. RENAME)
+    // Observe DataChannel commands from PA (e.g. RENAME, BATTERY)
     LaunchedEffect(Unit) {
         webRtcManager.dataChannelCommands.collect { (peerId, cmd) ->
-            if (cmd is ControlCommand.Rename) {
-                cameraName = cmd.name
-                // Update local storage
-                if (targetCamera != null) {
-                    securityRepo.addPairedDevice(targetCamera.copy(name = cmd.name))
+            when (cmd) {
+                is ControlCommand.Rename -> {
+                    cameraName = cmd.name
+                    // Update local storage
+                    if (targetCamera != null) {
+                        securityRepo.addPairedDevice(targetCamera.copy(name = cmd.name))
+                    }
                 }
+                is ControlCommand.Battery -> {
+                    paBatteryInfo = BatteryInfo(cmd.percentage, cmd.isCharging)
+                }
+                else -> {}
             }
+        }
+    }
+
+    // Periodically poll local battery and query PA battery
+    LaunchedEffect(targetCamera) {
+        while (isActive) {
+            pbBatteryInfo = BatteryHelper.getBatteryInfo(context)
+            if (targetCamera != null) {
+                webRtcManager.sendDataChannelCommand(targetCamera.deviceId, ControlCommand.QueryBattery)
+            }
+            delay(15_000L)
         }
     }
 
@@ -221,7 +247,17 @@ fun ViewerModeScreen(
         webRtcManager.connectionState.collect { state ->
             AppLogger.i("ViewerMode", "WebRTC PeerConnectionState changed to: $state")
             when (state) {
-                PeerConnection.PeerConnectionState.CONNECTED -> connectionStatus = "Live (720p 20fps)"
+                PeerConnection.PeerConnectionState.CONNECTED -> {
+                    connectionStatus = "Live (720p 20fps)"
+                    targetCamera?.let { cam ->
+                        coroutineScope.launch {
+                            delay(500L)
+                            webRtcManager.sendDataChannelCommand(cam.deviceId, ControlCommand.QueryBattery)
+                            delay(1500L)
+                            webRtcManager.sendDataChannelCommand(cam.deviceId, ControlCommand.QueryBattery)
+                        }
+                    }
+                }
                 PeerConnection.PeerConnectionState.CONNECTING -> connectionStatus = "Connecting to camera..."
                 PeerConnection.PeerConnectionState.FAILED -> {
                     connectionStatus = "Connection Failed"
@@ -323,6 +359,51 @@ fun ViewerModeScreen(
                                     color = if (connectionStatus.startsWith("Live")) StatusLive else MaterialTheme.colorScheme.error
                                 )
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Videocam,
+                                        contentDescription = "Camera Battery",
+                                        modifier = Modifier.size(13.dp),
+                                        tint = Color.LightGray
+                                    )
+                                    Text(
+                                        text = "Cam ${BatteryHelper.formatPercentage(paBatteryInfo)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = getBatteryColor(paBatteryInfo)
+                                    )
+                                }
+
+                                Text(
+                                    text = "•",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray
+                                )
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Smartphone,
+                                        contentDescription = "Viewer Battery",
+                                        modifier = Modifier.size(13.dp),
+                                        tint = Color.LightGray
+                                    )
+                                    Text(
+                                        text = "Viewer ${BatteryHelper.formatPercentage(pbBatteryInfo)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = getBatteryColor(pbBatteryInfo)
+                                    )
+                                }
+                            }
                         }
 
                         // Torch Button
@@ -417,6 +498,64 @@ fun ViewerModeScreen(
             }
         }
 
+        // Persistent compact battery badge when controls are auto-hidden
+        if (!isControlsVisible) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .safeDrawingPadding()
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = "Camera Battery",
+                            modifier = Modifier.size(12.dp),
+                            tint = Color.LightGray
+                        )
+                        Text(
+                            text = BatteryHelper.formatPercentage(paBatteryInfo),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = getBatteryColor(paBatteryInfo)
+                        )
+                    }
+
+                    Text(
+                        text = "•",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Smartphone,
+                            contentDescription = "Viewer Battery",
+                            modifier = Modifier.size(12.dp),
+                            tint = Color.LightGray
+                        )
+                        Text(
+                            text = BatteryHelper.formatPercentage(pbBatteryInfo),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = getBatteryColor(pbBatteryInfo)
+                        )
+                    }
+                }
+            }
+        }
+
         // Symmetric NAT Error Dialog
         if (hasSymmetricNatError) {
             AlertDialog(
@@ -442,5 +581,13 @@ fun ViewerModeScreen(
             surfaceRenderer?.let { webRtcManager.detachRemoteRenderer(it) }
             surfaceRenderer?.release()
         }
+    }
+}
+
+private fun getBatteryColor(info: BatteryInfo?): Color {
+    return if (info != null && info.percentage in 0..15 && !info.isCharging) {
+        Color(0xFFFF6E6E)
+    } else {
+        Color.White
     }
 }

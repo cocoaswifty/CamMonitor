@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.model
+package com.a0soft.gphone.camonitor.model
 
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.PairingPayload
@@ -83,6 +83,30 @@ class ModelSerializationTest {
         val parsedRename = ControlCommand.fromJson(rename.toJson())
         assertTrue(parsedRename is ControlCommand.Rename)
         assertEquals("Nursery Cam", (parsedRename as ControlCommand.Rename).name)
+
+        val batteryCharging = ControlCommand.Battery(percentage = 85, isCharging = true)
+        val parsedBatteryCharging = ControlCommand.fromJson(batteryCharging.toJson())
+        assertTrue(parsedBatteryCharging is ControlCommand.Battery)
+        assertEquals(85, (parsedBatteryCharging as ControlCommand.Battery).percentage)
+        assertTrue(parsedBatteryCharging.isCharging)
+
+        val batteryDischarging = ControlCommand.Battery(percentage = 42, isCharging = false)
+        val parsedBatteryDischarging = ControlCommand.fromJson(batteryDischarging.toJson())
+        assertTrue(parsedBatteryDischarging is ControlCommand.Battery)
+        assertEquals(42, (parsedBatteryDischarging as ControlCommand.Battery).percentage)
+        assertFalse(parsedBatteryDischarging.isCharging)
+
+        val queryBattery = ControlCommand.QueryBattery
+        val parsedQueryBattery = ControlCommand.fromJson(queryBattery.toJson())
+        assertEquals(ControlCommand.QueryBattery, parsedQueryBattery)
+    }
+
+    @Test
+    fun testBatteryHelperFormatPercentage() {
+        assertEquals("85%⚡", com.a0soft.gphone.camonitor.ui.common.BatteryHelper.formatPercentage(com.a0soft.gphone.camonitor.ui.common.BatteryInfo(85, true)))
+        assertEquals("42%", com.a0soft.gphone.camonitor.ui.common.BatteryHelper.formatPercentage(com.a0soft.gphone.camonitor.ui.common.BatteryInfo(42, false)))
+        assertEquals("--%", com.a0soft.gphone.camonitor.ui.common.BatteryHelper.formatPercentage(null))
+        assertEquals("--%", com.a0soft.gphone.camonitor.ui.common.BatteryHelper.formatPercentage(com.a0soft.gphone.camonitor.ui.common.BatteryInfo(-1, false)))
     }
 
     @Test

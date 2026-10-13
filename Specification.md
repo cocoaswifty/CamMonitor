@@ -2,8 +2,8 @@
 
 ## 1. Overview
 CamMonitor is a peer-to-peer camera monitoring Android application running across two device roles:
-* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio, supports customizable device naming/renaming, remote flashlight control, 2-way talkback, and battery-saving OLED black screen.
-* **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
+* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio, supports customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
+* **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, monitors real-time battery percentages & charging statuses of both devices (PA camera & PB viewer), supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
 * **Diagnostics & Logging:** Integrated persistent file-based rolling logger. Logs connection states, WebRTC ICE steps, signaling envelopes, camera lifecycle, and security verifications to local files, complete with an in-app log viewer and export/share feature.
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
@@ -105,7 +105,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * WebRTC media is encrypted end-to-end via DTLS-SRTP.
   * The DTLS certificate fingerprint is embedded within the authenticated and signed SDP offer/answer.
 * **DataChannel Command Authentication:**
-  * Remote commands (`TORCH`, `PTT`, `RENAME`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
+  * Remote commands (`TORCH`, `PTT`, `RENAME`, `BATTERY`, `QUERY_BATTERY`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
 
 ### 2.6 Revocation & Unpairing
 * PA provides a "Manage Paired Devices" screen.
@@ -144,7 +144,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
    * OLED Black Screen activations, tap-to-wake events, and 60-second idle countdown triggers.
    * 60s viewer absence camera release triggers.
 4. **DataChannel Messages:**
-   * Inbound and outbound control messages (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`).
+   * Inbound and outbound control messages (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`).
 
 ---
 
@@ -282,11 +282,19 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Left:** `IconButton(Icons.Default.ArrowBack)` $\to$ `"Exit Viewer Mode"`.
 * **Center:**
   * **Title:** Camera device name (e.g. `"Living Room Cam"`). Dynamically updates if PA is renamed.
-  * **Subtitle badge:** Status indicator (`"Live • 720p 20fps"`, `"Reconnecting..."`, `"Offline"`).
+  * **Subtitle badge:** Status indicator (`"Live (720p 20fps)"`, `"Connecting to camera..."`, `"Disconnected"`).
+  * **Battery Status Row:** Dual device battery indicators:
+    * **Camera Battery:** `Icons.Default.Videocam` + text (e.g., `"Cam 85%⚡"`).
+    * **Viewer Battery:** `Icons.Default.Smartphone` + text (e.g., `"Viewer 92%"`).
+    * **Color-Coded Alert:** Warning color (`#FF6E6E`) when battery $\le 15\%$ and discharging; appends `⚡` when charging.
 * **Right:**
   * **Torch Toggle Button:** Lightbulb/Flash icon. Yellow when PA flashlight is on, outline when off. Tapping sends `TORCH` command via DataChannel.
 
-#### 5.4.3 Bottom Overlay HUD
+#### 5.4.3 Persistent Floating Battery Badge
+* **Auto-Hide State Badge:** When controls auto-hide after 5 seconds, an unobtrusive floating semi-transparent pill (`Color.Black.copy(alpha = 0.55f)`) remains visible at top-right: `📷 <camPct>% • 📱 <viewerPct>%`.
+* Allows uninterrupted monitoring of remote camera battery without obstructing the video stream.
+
+#### 5.4.4 Bottom Overlay HUD
 * **Row of Floating Action Controls:**
   1. **Rotate 90° Button (`FilledTonalIconButton`):**
      * Icon: `Icons.Default.Rotate90DegreesCw`.
@@ -301,7 +309,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
      * Default State: **OFF (Muted)** upon initial launch to prevent acoustic feedback / howling when devices are co-located in the same room.
      * Persistence: The audio playback state is persistently saved in secure preferences (`viewer_audio_playback_enabled`) and restored automatically across app sessions. WebRTC incoming audio track enabled state is synchronized immediately on connection.
 
-#### 5.4.4 Connection & Error State Overlays
+#### 5.4.5 Connection & Error State Overlays
 * **Connecting / Reconnecting State:**
   * Centered semi-transparent scrim with `CircularProgressIndicator` and text: `"Connecting to camera..."` / `"Reconnecting (Attempt 2/5)..."`.
 * **Symmetric NAT Traversal Error Banner:**
@@ -365,7 +373,7 @@ flowchart LR
   * Target frame rate: 20 FPS.
   * Target bitrate: ~1.5 Mbps, dynamic down to 500 Kbps on packet loss.
 * **Audio Pipeline:** 16 kHz mono Opus codec. Hardware Acoustic Echo Cancellation (AEC) and Noise Suppression (NS) enabled.
-* **Data Channel:** WebRTC `RTCDataChannel` (label: `"control"`, ordered, reliable) for low-latency commands (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`).
+* **Data Channel:** WebRTC `RTCDataChannel` (label: `"control"`, ordered, reliable). Created by PB on the Offer SDP so SCTP negotiation succeeds without renegotiation. Exchanges bidirectional low-latency commands (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`). PA broadcasts battery status immediately upon DataChannel `OPEN` and periodically every 15 seconds; PB queries PA battery on connection.
 
 ### 6.2 NAT Traversal Scope & Limitations
 * **STUN Server:** `stun:stun.l.google.com:19302`
@@ -453,9 +461,11 @@ flowchart TD
 * `testCameraMode_MaxViewersReached_RejectsThirdConnection()`: Connects 2 viewers $\to$ verifies 3rd connection receives `REJECT_MAX_CAPACITY`.
 * `testCameraMode_Rename_BroadcastsDataChannelCommand()`: Renames camera $\to$ verifies JSON `{"cmd":"RENAME"}` sent to all active viewers.
 
-#### 8.2.3 DataChannel & Control Unit Tests (`test/datachannel/`)
+#### 8.2.3 DataChannel & Control Unit Tests (`test/datachannel/` & `test/model/`)
 * `testDataChannelCommandParser_ValidTorchCommand_ParsesCorrectly()`: Verifies `TORCH` true/false parsing.
 * `testDataChannelCommandParser_ValidPttCommands_TogglesAudioTrack()`: Verifies `PTT_START` and `PTT_STOP` parse to correct audio states.
+* `testBatteryCommandSerialization()`: Verifies `BATTERY` JSON serialization/deserialization (percentage and charging boolean) and `QUERY_BATTERY`.
+* `testBatteryHelperFormatPercentage()`: Verifies battery text formatting with charging indicator (e.g., `"85%⚡"`, `"42%"`, `"--%"`).
 * `testRotationState_TapRotateButton_IncrementsBy90Degrees()`: Verifies sequence $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.
 
 #### 8.2.4 Jetpack Compose UI Tests (`androidTest/ui/`)

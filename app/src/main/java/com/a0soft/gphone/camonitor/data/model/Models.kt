@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.data.model
+package com.a0soft.gphone.camonitor.data.model
 
 import org.json.JSONObject
 
@@ -225,6 +225,8 @@ sealed class ControlCommand {
     object PttStart : ControlCommand()
     object PttStop : ControlCommand()
     data class Rename(val name: String) : ControlCommand()
+    data class Battery(val percentage: Int, val isCharging: Boolean) : ControlCommand()
+    object QueryBattery : ControlCommand()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -239,6 +241,12 @@ sealed class ControlCommand {
                 json.put("cmd", "RENAME")
                 json.put("name", name)
             }
+            is Battery -> {
+                json.put("cmd", "BATTERY")
+                json.put("pct", percentage)
+                json.put("charging", isCharging)
+            }
+            is QueryBattery -> json.put("cmd", "QUERY_BATTERY")
         }
         return json.toString()
     }
@@ -252,6 +260,11 @@ sealed class ControlCommand {
                     "PTT_START" -> PttStart
                     "PTT_STOP" -> PttStop
                     "RENAME" -> Rename(name = json.getString("name"))
+                    "BATTERY" -> Battery(
+                        percentage = json.getInt("pct"),
+                        isCharging = json.optBoolean("charging", false)
+                    )
+                    "QUERY_BATTERY" -> QueryBattery
                     else -> null
                 }
             } catch (e: Exception) {

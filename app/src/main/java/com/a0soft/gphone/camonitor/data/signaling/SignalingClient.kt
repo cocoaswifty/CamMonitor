@@ -46,6 +46,7 @@ class MqttSignalingClient(
     data class BrokerEndpoint(val host: String, val port: Int, val useSsl: Boolean)
 
     private val brokerEndpoints = listOf(
+        BrokerEndpoint("broker.hivemq.com", 1883, false),
         BrokerEndpoint("broker.emqx.io", 1883, false),
         BrokerEndpoint("broker.emqx.io", 8883, true)
     )
@@ -70,7 +71,7 @@ class MqttSignalingClient(
         for (endpoint in brokerEndpoints) {
             AppLogger.i(tag, "Attempting connection to ${endpoint.host}:${endpoint.port} (ssl=${endpoint.useSsl})...")
             val success = try {
-                withTimeoutOrNull(8_000L) {
+                withTimeoutOrNull(15_000L) {
                     attemptConnect(endpoint, topic)
                 } ?: false
             } catch (e: Exception) {
@@ -123,6 +124,8 @@ class MqttSignalingClient(
 
             try {
                 newClient.connectWith()
+                    .cleanSession(true)
+                    .keepAlive(30)
                     .send()
                     .whenComplete { _, connectError ->
                         if (!continuation.isActive) {

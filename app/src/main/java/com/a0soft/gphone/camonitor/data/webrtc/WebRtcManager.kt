@@ -274,11 +274,23 @@ class WebRtcManager(private val context: Context) {
 
     private fun setupDataChannel(peerId: String, dc: DataChannel) {
         dataChannels[peerId] = dc
+        fun sendBatteryIfOpen() {
+            if (dc.state() == DataChannel.State.OPEN) {
+                val bInfo = com.a0soft.gphone.camonitor.ui.common.BatteryHelper.getBatteryInfo(context)
+                if (bInfo.percentage >= 0) {
+                    val cmd = ControlCommand.Battery(bInfo.percentage, bInfo.isCharging)
+                    val bytes = cmd.toJson().toByteArray(Charsets.UTF_8)
+                    dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), false))
+                }
+            }
+        }
+
         dc.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(previousAmount: Long) {}
 
             override fun onStateChange() {
                 AppLogger.i(tag, "DataChannel state for $peerId: ${dc.state()}")
+                sendBatteryIfOpen()
             }
 
             override fun onMessage(buffer: DataChannel.Buffer) {
@@ -292,6 +304,7 @@ class WebRtcManager(private val context: Context) {
                 }
             }
         })
+        sendBatteryIfOpen()
     }
 
     fun createDataChannelForSender(peerId: String): DataChannel? {
