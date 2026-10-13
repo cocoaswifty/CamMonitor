@@ -1,6 +1,7 @@
 package com.a0soft.gphone.camonitor.ui.viewer
 
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -57,6 +58,11 @@ fun ViewerModeScreen(
     var hasSymmetricNatError by remember { mutableStateOf(false) }
 
     var surfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+
+    BackHandler {
+        webRtcManager.closeAll()
+        onExitViewerMode()
+    }
 
     // Sync audio playback enabled state to WebRTC manager
     LaunchedEffect(isAudioEnabled) {

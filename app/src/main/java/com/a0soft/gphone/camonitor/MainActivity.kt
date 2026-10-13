@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor
+package com.a0soft.gphone.camonitor
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -75,63 +75,92 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun CamMonitorAppContent() {
-        var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
+        val backStack = remember { mutableStateListOf(AppScreen.HOME) }
+        val currentScreen = backStack.lastOrNull() ?: AppScreen.HOME
         val securityRepo = remember { CamMonitorApp.instance.securityRepository }
+
+        fun navigateTo(screen: AppScreen) {
+            backStack.add(screen)
+        }
+
+        fun navigateBack() {
+            if (backStack.size > 1) {
+                val popped = backStack.removeAt(backStack.size - 1)
+                if (popped == AppScreen.CAMERA_MODE) {
+                    val stopIntent = android.content.Intent(this@MainActivity, com.a0soft.gphone.camonitor.service.CameraMonitorService::class.java)
+                    stopService(stopIntent)
+                } else if (popped == AppScreen.VIEWER_MODE) {
+                    CamMonitorApp.instance.webRtcManager.closeAll()
+                }
+            } else {
+                finish()
+            }
+        }
+
+        androidx.activity.compose.BackHandler(enabled = backStack.size > 1) {
+            navigateBack()
+        }
 
         when (currentScreen) {
             AppScreen.HOME -> {
                 HomeScreen(
                     onStartCameraMode = {
                         val pairedCount = securityRepo.getPairedDevices().size
-                        currentScreen = if (pairedCount == 0) {
-                            AppScreen.CAMERA_PAIRING
+                        if (pairedCount == 0) {
+                            navigateTo(AppScreen.CAMERA_PAIRING)
                         } else {
-                            AppScreen.CAMERA_MODE
+                            navigateTo(AppScreen.CAMERA_MODE)
                         }
                     },
                     onStartViewerMode = {
                         val pairedCount = securityRepo.getPairedDevices().size
-                        currentScreen = if (pairedCount == 0) {
-                            AppScreen.VIEWER_PAIRING
+                        if (pairedCount == 0) {
+                            navigateTo(AppScreen.VIEWER_PAIRING)
                         } else {
-                            AppScreen.VIEWER_MODE
+                            navigateTo(AppScreen.VIEWER_MODE)
                         }
                     },
-                    onOpenPairedDevices = { currentScreen = AppScreen.MANAGE_DEVICES },
-                    onOpenLogs = { currentScreen = AppScreen.LOGS }
+                    onOpenPairedDevices = { navigateTo(AppScreen.MANAGE_DEVICES) },
+                    onOpenLogs = { navigateTo(AppScreen.LOGS) }
                 )
             }
             AppScreen.CAMERA_PAIRING -> {
                 CameraPairingScreen(
-                    onPairingSuccess = { currentScreen = AppScreen.CAMERA_MODE },
-                    onCancel = { currentScreen = AppScreen.HOME }
+                    onPairingSuccess = {
+                        if (backStack.isNotEmpty()) backStack.removeAt(backStack.size - 1)
+                        backStack.add(AppScreen.CAMERA_MODE)
+                    },
+                    onCancel = { navigateBack() }
                 )
             }
             AppScreen.CAMERA_MODE -> {
                 CameraModeScreen(
-                    onExitCameraMode = { currentScreen = AppScreen.HOME }
+                    onExitCameraMode = { navigateBack() }
                 )
             }
             AppScreen.VIEWER_PAIRING -> {
                 ViewerPairingScreen(
-                    onPairingSuccess = { currentScreen = AppScreen.VIEWER_MODE },
-                    onCancel = { currentScreen = AppScreen.HOME }
+                    onPairingSuccess = {
+                        if (backStack.isNotEmpty()) backStack.removeAt(backStack.size - 1)
+                        backStack.add(AppScreen.VIEWER_MODE)
+                    },
+                    onCancel = { navigateBack() }
                 )
             }
             AppScreen.VIEWER_MODE -> {
                 ViewerModeScreen(
-                    onExitViewerMode = { currentScreen = AppScreen.HOME }
+                    onExitViewerMode = { navigateBack() }
                 )
             }
             AppScreen.MANAGE_DEVICES -> {
                 ManageDevicesScreen(
-                    onPairNewViewer = { currentScreen = AppScreen.CAMERA_PAIRING },
-                    onBack = { currentScreen = AppScreen.HOME }
+                    onPairNewViewer = { navigateTo(AppScreen.CAMERA_PAIRING) },
+                    onBack = { navigateBack() }
                 )
             }
             AppScreen.LOGS -> {
                 LogViewerScreen(
-                    onBack = { currentScreen = AppScreen.HOME }
+                    onBack = { navigateBack() }
                 )
             }
         }

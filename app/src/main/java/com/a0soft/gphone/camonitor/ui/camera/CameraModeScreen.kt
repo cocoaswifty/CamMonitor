@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.ui.camera
+package com.a0soft.gphone.camonitor.ui.camera
 
 import android.app.Activity
 import android.content.ComponentName
@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.view.ViewGroup
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -62,6 +63,23 @@ fun CameraModeScreen(
     var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var localSurfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+
+    fun wakeUpDisplay() {
+        isBlackScreenActive = false
+        idleSeconds = 0
+    }
+
+    BackHandler {
+        if (showRenameDialog) {
+            showRenameDialog = false
+        } else if (isBlackScreenActive) {
+            wakeUpDisplay()
+        } else {
+            val stopIntent = Intent(context, CameraMonitorService::class.java)
+            context.stopService(stopIntent)
+            onExitCameraMode()
+        }
+    }
 
     // Bind CameraMonitorService
     DisposableEffect(Unit) {
@@ -139,11 +157,6 @@ fun CameraModeScreen(
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
         }
-    }
-
-    fun wakeUpDisplay() {
-        isBlackScreenActive = false
-        idleSeconds = 0
     }
 
     // Root UI Container
