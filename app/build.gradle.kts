@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.cammonitor"
+    namespace = "com.a0soft.gphone.camonitor"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.cammonitor"
+        applicationId = "com.a0soft.gphone.camonitor"
         minSdk = 28
         targetSdk = 37
         versionCode = 1
