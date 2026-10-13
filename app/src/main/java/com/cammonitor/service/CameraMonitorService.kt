@@ -145,25 +145,44 @@ class CameraMonitorService : Service() {
     }
 
     private suspend fun observeSignaling(app: CamMonitorApp) {
+        AppLogger.i(tag, "Signaling observer started, listening for incoming WebRTC messages")
         app.signalingClient.incomingMessages.collect { (senderId, message) ->
             if (!app.securityRepository.isDeviceWhitelisted(senderId)) {
-                AppLogger.w(tag, "Ignoring signaling from non-whitelisted sender: $senderId")
+                AppLogger.w(tag, "Ignoring signaling from non-whitelisted sender: $senderId (${message.javaClass.simpleName})")
                 return@collect
             }
 
             when (message) {
-                is SignalingMessage.Offer -> handleRemoteOffer(senderId, message.sdp)
+                is SignalingMessage.Offer -> {
+                    AppLogger.i(tag, "Received WebRTC Offer from $senderId (SDP size: ${message.sdp.length} chars)")
+                    handleRemoteOffer(senderId, message.sdp)
+                }
                 is SignalingMessage.IceCandidate -> {
+                    val typeMatch = Regex("typ\\s+(\\w+)").find(message.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+                    AppLogger.d(tag, "Received remote ICE candidate from $senderId: mid=${message.sdpMid}, index=${message.sdpMLineIndex}, type=$typeMatch")
                     val candidate = IceCandidate(message.sdpMid, message.sdpMLineIndex, message.sdp)
                     app.webRtcManager.addRemoteIceCandidate(senderId, candidate)
                 }
-                else -> {}
+                else -> {
+                    AppLogger.i(tag, "Received signaling message from $senderId: ${message.javaClass.simpleName}")
+                }
             }
         }
     }
 
     private fun handleRemoteOffer(senderId: String, sdpStr: String) {
         val app = CamMonitorApp.instance
+        val startTime = System.currentTimeMillis()
+        AppLogger.i(tag, "Processing WebRTC Offer from $senderId (activeViewers=${app.webRtcManager.activeViewersCount.value}, state=${_streamingState.value})")
+
+        // Auto-resume camera capture if paused due to inactivity
+        if (_streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
+            AppLogger.i(tag, "Camera was in PAUSED_INACTIVITY; resuming capture before responding to Offer")
+            resumeStreamingFromPause()
+        } else {
+            app.webRtcManager.startCameraCapture()
+        }
+
         // Cap max 2 viewers
         if (app.webRtcManager.activeViewersCount.value >= 2) {
             AppLogger.w(tag, "Rejecting connection from $senderId: Max 2 viewers reached")
@@ -172,49 +191,65 @@ class CameraMonitorService : Service() {
         }
 
         val pc = app.webRtcManager.createPeerConnection(senderId) { candidate ->
+            val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+            AppLogger.d(tag, "Generated local ICE candidate for $senderId: mid=${candidate.sdpMid}, type=$typeMatch. Transmitting...")
             val iceMsg = SignalingMessage.IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)
             sendSignalingMessageToViewer(senderId, iceMsg)
-        } ?: return
+        } ?: run {
+            AppLogger.e(tag, "Failed to create PeerConnection for $senderId")
+            return
+        }
 
         app.webRtcManager.createDataChannelForSender(senderId)
 
         val offerDesc = SessionDescription(SessionDescription.Type.OFFER, sdpStr)
+        AppLogger.i(tag, "Applying remote Offer to PeerConnection for $senderId...")
         pc.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
-                AppLogger.i(tag, "Remote offer set successfully for $senderId. Creating answer...")
+                val elapsed = System.currentTimeMillis() - startTime
+                AppLogger.i(tag, "Remote Offer set successfully for $senderId (+${elapsed}ms). Draining buffered ICE candidates and creating Answer...")
+                app.webRtcManager.drainRemoteIceCandidates(senderId)
                 val constraints = MediaConstraints()
                 pc.createAnswer(object : SdpObserver {
                     override fun onCreateSuccess(answerDesc: SessionDescription) {
+                        val createElapsed = System.currentTimeMillis() - startTime
+                        AppLogger.i(tag, "Local Answer created for $senderId (+${createElapsed}ms, SDP size=${answerDesc.description.length} chars). Setting local description...")
                         pc.setLocalDescription(object : SdpObserver {
                             override fun onSetSuccess() {
-                                AppLogger.i(tag, "Local answer set and sending to $senderId")
+                                val setLocalElapsed = System.currentTimeMillis() - startTime
+                                AppLogger.i(tag, "Local Answer set successfully (+${setLocalElapsed}ms), transmitting Answer to $senderId")
                                 val answerMsg = SignalingMessage.Answer(answerDesc.description)
                                 sendSignalingMessageToViewer(senderId, answerMsg)
                             }
                             override fun onCreateSuccess(desc: SessionDescription?) {}
-                            override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting local answer: $err") }
+                            override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting local answer for $senderId: $err") }
                             override fun onCreateFailure(err: String?) {}
                         }, answerDesc)
                     }
                     override fun onSetSuccess() {}
-                    override fun onCreateFailure(err: String?) { AppLogger.e(tag, "Failed creating answer: $err") }
+                    override fun onCreateFailure(err: String?) { AppLogger.e(tag, "Failed creating answer for $senderId: $err") }
                     override fun onSetFailure(err: String?) {}
                 }, constraints)
             }
             override fun onCreateSuccess(desc: SessionDescription?) {}
-            override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting remote offer: $err") }
+            override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting remote offer from $senderId: $err") }
             override fun onCreateFailure(err: String?) {}
         }, offerDesc)
     }
 
     private fun sendSignalingMessageToViewer(viewerId: String, msg: SignalingMessage) {
         val app = CamMonitorApp.instance
-        val viewer = app.securityRepository.getPairedDevice(viewerId) ?: return
+        val viewer = app.securityRepository.getPairedDevice(viewerId)
+        if (viewer == null) {
+            AppLogger.w(tag, "Cannot send ${msg.javaClass.simpleName} to $viewerId: Viewer not found in paired list")
+            return
+        }
         val remotePubKey = com.cammonitor.data.security.CryptoUtils.publicKeyFromBase64(viewer.publicKeyBase64)
         val key = com.cammonitor.data.security.CryptoUtils.deriveEcdhKey(app.securityRepository.getKeyPair().private, remotePubKey)
 
         serviceScope.launch {
-            app.signalingClient.sendSignalingMessage(viewerId, msg, key)
+            val sent = app.signalingClient.sendSignalingMessage(viewerId, msg, key)
+            AppLogger.d(tag, "Sent ${msg.javaClass.simpleName} to $viewerId (success=$sent)")
         }
     }
 

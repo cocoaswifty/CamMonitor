@@ -1,0 +1,32 @@
+﻿Develop a camera-based monitor Android app, the app name is CamMonitor.
+Users can install CamMonitor on two phones, say PA and PB
+CamMonitor has two mode, viewer and camera mode. 
+Users run CamMonitor on PA with the camera mode and on PB with the viewer mode.
+User can see images on PB which images are captured on PA.
+
+1.Open the app, it shows "Start camera mode" and "Start viewer mode" buttons on UI.
+
+2.tap "Start camera mode" button on PA
+  1. at the first time, show a pairing QR code for viewer to pair
+  2. if there are any paired devices, open the back camera by default, wait for paired viewer to connect
+  3. if connected
+     a. stream images to paired devices
+     b. if no UI interactive, after 1 minute, auto turn the screen to black for saving the battery power and protect the screen lifetime 
+     c. tap screen will auto turn on the screen for users to interactive, go to step 2.3.b
+  4. if not connected for 1 minute, close the camera and show "Start camera mode" and "Exit camera mode" buttons on screen.
+     if users tap the "Start camera mode" button, go to step 2.2   
+     If users tap the "Exit camera mode" button, show UI of step 1
+  5. allow max 2 viewer devices to connect
+  6. use 720p@20fps by default
+  
+3.tap "Start viewer mode" button on PB
+  1. if no paired devices, open camera to scan pairing QR code to pair
+  2. connect to paired device, show camera view of paired device
+  3. tap "Rotate" icon button to rotate the streaming image 90 degrees. Tap again will rotate 90 degree again
+  4. tap "Exit viewer mode" button, show UI of step 1
+  
+The connection works on both LAN and WAN.
+
+First review this specification and make it complete. Don't create any code.
+
+First come out the implementation plan before changing the code.

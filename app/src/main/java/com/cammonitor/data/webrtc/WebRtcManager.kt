@@ -156,7 +156,12 @@ class WebRtcManager(private val context: Context) {
     // ----------------------------------------------------
 
     fun createPeerConnection(peerId: String, onIceCandidateGenerated: (IceCandidate) -> Unit): PeerConnection? {
-        val factory = peerConnectionFactory ?: return null
+        val factory = peerConnectionFactory ?: run {
+            AppLogger.e(tag, "Cannot create PeerConnection: PeerConnectionFactory is null")
+            return null
+        }
+        closePeer(peerId)
+        AppLogger.i(tag, "Creating new PeerConnection for $peerId with ${iceServers.size} ICE servers")
 
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -165,14 +170,17 @@ class WebRtcManager(private val context: Context) {
 
         val pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
-                AppLogger.d(tag, "Generated ICE Candidate for $peerId: ${candidate.sdpMid}")
+                val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+                AppLogger.i(tag, "Local ICE Candidate generated for $peerId: type=$typeMatch, mid=${candidate.sdpMid}, index=${candidate.sdpMLineIndex}")
                 onIceCandidateGenerated(candidate)
             }
 
-            override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
+            override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {
+                AppLogger.i(tag, "IceCandidates removed for $peerId: count=${candidates?.size ?: 0}")
+            }
 
             override fun onSignalingChange(state: PeerConnection.SignalingState?) {
-                AppLogger.d(tag, "SignalingState for $peerId: $state")
+                AppLogger.i(tag, "SignalingState for $peerId: $state")
             }
 
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
@@ -186,7 +194,7 @@ class WebRtcManager(private val context: Context) {
             }
 
             override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
-                AppLogger.d(tag, "IceGatheringState: $state")
+                AppLogger.i(tag, "IceGatheringState for $peerId: $state")
             }
 
             override fun onAddStream(stream: MediaStream?) {}
@@ -207,12 +215,17 @@ class WebRtcManager(private val context: Context) {
             override fun onRemoveStream(stream: MediaStream?) {}
 
             override fun onDataChannel(dataChannel: DataChannel) {
-                AppLogger.i(tag, "DataChannel received from $peerId: ${dataChannel.label()}")
+                AppLogger.i(tag, "DataChannel received from $peerId: label=${dataChannel.label()}, id=${dataChannel.id()}")
                 setupDataChannel(peerId, dataChannel)
             }
 
-            override fun onRenegotiationNeeded() {}
-            override fun onIceConnectionReceivingChange(receiving: Boolean) {}
+            override fun onRenegotiationNeeded() {
+                AppLogger.d(tag, "Renegotiation needed for $peerId")
+            }
+
+            override fun onIceConnectionReceivingChange(receiving: Boolean) {
+                AppLogger.i(tag, "IceConnection receiving for $peerId: receiving=$receiving")
+            }
         })
 
         if (pc != null) {
@@ -305,8 +318,36 @@ class WebRtcManager(private val context: Context) {
         AppLogger.i(tag, "Remote audio track enabled: $enabled")
     }
 
+    private val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableList<IceCandidate>>()
+
     fun addRemoteIceCandidate(peerId: String, candidate: IceCandidate) {
-        peerConnections[peerId]?.addIceCandidate(candidate)
+        val pc = peerConnections[peerId]
+        val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+        if (pc != null && pc.remoteDescription != null) {
+            val added = pc.addIceCandidate(candidate)
+            AppLogger.i(tag, "Added remote ICE candidate directly for $peerId: type=$typeMatch, mid=${candidate.sdpMid}, added=$added")
+        } else {
+            val list = pendingRemoteIceCandidates.getOrPut(peerId) { mutableListOf() }
+            list.add(candidate)
+            AppLogger.i(tag, "Buffered remote ICE candidate for $peerId: type=$typeMatch, mid=${candidate.sdpMid} (pending count=${list.size}, pc=${if (pc != null) "exists(waiting remoteDesc)" else "null"})")
+        }
+    }
+
+    fun drainRemoteIceCandidates(peerId: String) {
+        val pc = peerConnections[peerId] ?: run {
+            AppLogger.w(tag, "Cannot drain ICE candidates: PeerConnection not found for $peerId")
+            return
+        }
+        val pending = pendingRemoteIceCandidates.remove(peerId)
+        if (pending.isNullOrEmpty()) {
+            AppLogger.i(tag, "No buffered ICE candidates to drain for $peerId")
+            return
+        }
+        AppLogger.i(tag, "Draining ${pending.size} buffered ICE candidates for $peerId into PeerConnection")
+        pending.forEach { cand ->
+            val added = pc.addIceCandidate(cand)
+            AppLogger.d(tag, "Drained candidate mid=${cand.sdpMid} (added=$added)")
+        }
     }
 
     private fun updateActiveViewersCount() {
@@ -317,6 +358,7 @@ class WebRtcManager(private val context: Context) {
     }
 
     fun closePeer(peerId: String) {
+        pendingRemoteIceCandidates.remove(peerId)
         dataChannels.remove(peerId)?.dispose()
         peerConnections.remove(peerId)?.dispose()
         updateActiveViewersCount()

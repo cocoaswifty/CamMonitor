@@ -174,6 +174,11 @@ fun CameraModeScreen(
                         app.webRtcManager.attachLocalRenderer(this)
                     }
                 },
+                onRelease = { renderer ->
+                    app.webRtcManager.detachLocalRenderer(renderer)
+                    renderer.release()
+                    localSurfaceRenderer = null
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }

@@ -98,7 +98,11 @@ class DefaultSecurityRepository(
         }
 
         keyPair = try {
-            CryptoUtils.getOrCreateDeviceKeyPair(alias)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                CryptoUtils.getOrCreateDeviceKeyPair(alias)
+            } else {
+                getOrCreateSoftwareKeyPair()
+            }
         } catch (e: Exception) {
             AppLogger.w("SecurityRepository", "KeyStore ECDH unavailable, using persistent software key: ${e.message}")
             getOrCreateSoftwareKeyPair()
@@ -267,7 +271,7 @@ class DefaultSecurityRepository(
         // 2. Anti-Replay Nonce Check
         cleanOldNonces(now)
         if (seenNonces.containsKey(envelope.nonce)) {
-            AppLogger.w("SecurityRepository", "Envelope discarded: Duplicate nonce detected (${envelope.nonce})")
+            AppLogger.d("SecurityRepository", "Envelope duplicate nonce (${envelope.nonce}) discarded (sender: ${envelope.senderId})")
             return null
         }
 

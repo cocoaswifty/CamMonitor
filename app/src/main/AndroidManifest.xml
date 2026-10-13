@@ -45,7 +45,8 @@
         <service
             android:name=".service.CameraMonitorService"
             android:exported="false"
-            android:foregroundServiceType="camera" />
+            android:foregroundServiceType="camera"
+            tools:targetApi="29" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

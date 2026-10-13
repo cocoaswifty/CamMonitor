@@ -7,7 +7,7 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
 * **Diagnostics & Logging:** Integrated persistent file-based rolling logger. Logs connection states, WebRTC ICE steps, signaling envelopes, camera lifecycle, and security verifications to local files, complete with an in-app log viewer and export/share feature.
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
-  * **Minimum SDK (`minSdk`):** `31` (Android 12)
+  * **Minimum SDK (`minSdk`):** `28` (Android 9 Pie)
   * **Target SDK (`targetSdk`):** `37` (Android 17)
   * **Compile SDK (`compileSdk`):** `37`
   * **Native Binary Compatibility:** 16 KB ELF page-size alignment verified for WebRTC native libraries (`libjingle_peerconnection_so.so`), ensuring compliance with Android 15+ (API 35+) memory paging requirements.
@@ -376,12 +376,13 @@ flowchart LR
 
 ---
 
-## 7. Android Platform & OS Compatibility (minSdk 31, targetSdk 37)
+## 7. Android Platform & OS Compatibility (minSdk 28, targetSdk 37)
 
 ### 7.1 SDK Constraints & Platform Requirements
-* **`minSdk = 31` (Android 12):**
-  * Guarantees support for `SplashScreen` API (`androidx.core:core-splashscreen`).
-  * Enforces Android 12 background service launch restrictions (Foreground Service must start with immediate user action or active foreground state).
+* **`minSdk = 28` (Android 9 Pie):**
+  * Wide compatibility spanning legacy Android 9 (API 28) through modern devices.
+  * Hardware KeyStore ECDH key agreement (`KeyProperties.PURPOSE_AGREE_KEY`) is utilized on API 31+; devices on API 28-30 seamlessly fall back to encrypted software EC keys (`secp256r1`) stored in encrypted preferences (`cammonitor_secure_prefs`).
+  * Foreground Service launch handles API 28 foreground service startup and adapts `foregroundServiceType="camera"` dynamically for API 29+.
 * **`compileSdk = 37` & `targetSdk = 37` (Android 17):**
   * **Mandatory Foreground Service Types (API 34+):** Service declared with `android:foregroundServiceType="camera"` (only requires `CAMERA` and `FOREGROUND_SERVICE_CAMERA` permissions).
   * **Runtime Notification Permission (API 33+):** `POST_NOTIFICATIONS` requested prior to launching PA Camera Service.
@@ -392,16 +393,16 @@ flowchart LR
 
 | Permission | Device PA | Device PB | Minimum API | Purpose |
 |---|:---:|:---:|:---:|---|
-| `android.permission.CAMERA` | Yes | Yes (Pairing) | 31 | Video capture & QR code scanner |
-| `android.permission.RECORD_AUDIO` | Yes | Yes (PTT) | 31 | Audio streaming & Push-to-Talk intercom |
-| `android.permission.INTERNET` | Yes | Yes | 31 | WebRTC & MQTT signaling |
-| `android.permission.ACCESS_NETWORK_STATE` | Yes | Yes | 31 | Network type detection & ICE restart |
-| `android.permission.CHANGE_NETWORK_STATE` | Yes | No | 31 | Wi-Fi socket routing optimization |
+| `android.permission.CAMERA` | Yes | Yes (Pairing) | 28 | Video capture & QR code scanner |
+| `android.permission.RECORD_AUDIO` | Yes | Yes (PTT) | 28 | Audio streaming & Push-to-Talk intercom |
+| `android.permission.INTERNET` | Yes | Yes | 28 | WebRTC & MQTT signaling |
+| `android.permission.ACCESS_NETWORK_STATE` | Yes | Yes | 28 | Network type detection & ICE restart |
+| `android.permission.CHANGE_NETWORK_STATE` | Yes | No | 28 | Wi-Fi socket routing optimization |
 | `android.permission.POST_NOTIFICATIONS` | Yes | No | 33 | Sticky Foreground Service notification |
-| `android.permission.FOREGROUND_SERVICE` | Yes | No | 31 | Background service persistence |
+| `android.permission.FOREGROUND_SERVICE` | Yes | No | 28 | Background service persistence |
 | `android.permission.FOREGROUND_SERVICE_CAMERA` | Yes | No | 34 | Background camera capture permission |
-| `android.permission.WAKE_LOCK` | Yes | No | 31 | Prevent CPU sleep during OLED black screen |
-| `android.permission.MODIFY_AUDIO_SETTINGS` | Yes | Yes | 31 | Speakerphone & Hardware AEC routing |
+| `android.permission.WAKE_LOCK` | Yes | No | 28 | Prevent CPU sleep during OLED black screen |
+| `android.permission.MODIFY_AUDIO_SETTINGS` | Yes | Yes | 28 | Speakerphone & Hardware AEC routing |
 
 ### 7.3 FileProvider Configuration (Log Export)
 * Manifest includes `androidx.core.content.FileProvider` to safely share `cammonitor.log` via Android's share sheet without requiring legacy external storage permissions:

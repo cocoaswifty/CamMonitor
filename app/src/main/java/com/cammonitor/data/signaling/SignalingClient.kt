@@ -46,9 +46,8 @@ class MqttSignalingClient(
     data class BrokerEndpoint(val host: String, val port: Int, val useSsl: Boolean)
 
     private val brokerEndpoints = listOf(
-        BrokerEndpoint("broker.hivemq.com", 1883, false),
         BrokerEndpoint("broker.emqx.io", 1883, false),
-        BrokerEndpoint("broker.hivemq.com", 8883, true)
+        BrokerEndpoint("broker.emqx.io", 8883, true)
     )
 
     override suspend fun startListening(): Boolean {
@@ -70,7 +69,7 @@ class MqttSignalingClient(
         for (endpoint in brokerEndpoints) {
             AppLogger.i(tag, "Attempting connection to ${endpoint.host}:${endpoint.port} (ssl=${endpoint.useSsl})...")
             val success = try {
-                withTimeoutOrNull(4_000L) {
+                withTimeoutOrNull(8_000L) {
                     attemptConnect(endpoint, topic)
                 } ?: false
             } catch (e: Exception) {
@@ -116,10 +115,14 @@ class MqttSignalingClient(
                 newClient.connectWith()
                     .send()
                     .whenComplete { _, connectError ->
+                        if (!continuation.isActive) {
+                            try { newClient.disconnect() } catch (_: Exception) {}
+                            return@whenComplete
+                        }
                         if (connectError != null) {
                             AppLogger.w(tag, "Failed connecting to ${endpoint.host}:${endpoint.port}: ${connectError.message}")
                             try { newClient.disconnect() } catch (_: Exception) {}
-                            if (continuation.isActive) continuation.resume(false)
+                            continuation.resume(false)
                         } else {
                             AppLogger.i(tag, "Connected to ${endpoint.host}:${endpoint.port}. Subscribing to $topic...")
                             newClient.subscribeWith()
@@ -131,15 +134,20 @@ class MqttSignalingClient(
                                 }
                                 .send()
                                 .whenComplete { _, subError ->
+                                    if (!continuation.isActive) {
+                                        try { newClient.disconnect() } catch (_: Exception) {}
+                                        return@whenComplete
+                                    }
                                     if (subError != null) {
                                         AppLogger.e(tag, "Subscription failed on $topic", subError)
                                         try { newClient.disconnect() } catch (_: Exception) {}
-                                        if (continuation.isActive) continuation.resume(false)
+                                        continuation.resume(false)
                                     } else {
-                                        AppLogger.i(tag, "Subscribed successfully to $topic")
+                                        AppLogger.i(tag, "Subscribed successfully to $topic on ${endpoint.host}:${endpoint.port}")
+                                        client?.disconnect()
                                         client = newClient
                                         _isConnectedFlow.value = true
-                                        if (continuation.isActive) continuation.resume(true)
+                                        continuation.resume(true)
                                     }
                                 }
                         }
@@ -208,8 +216,10 @@ class MqttSignalingClient(
                         AppLogger.i(tag, "Received verified message [${message.javaClass.simpleName}] from ${envelope.senderId}")
                         _incomingMessages.emit(Pair(envelope.senderId, message))
                     } else {
-                        AppLogger.w(tag, "Failed parsing decrypted signaling message")
+                        AppLogger.w(tag, "Failed parsing decrypted signaling message from ${envelope.senderId}: ${decryptedJson.take(100)}")
                     }
+                } else {
+                    AppLogger.w(tag, "Verification or decryption failed for envelope from ${envelope.senderId} (hasEcdhKey=${ecdhKey != null}, hasOtpKey=${otpKey != null})")
                 }
             } catch (e: Exception) {
                 AppLogger.e(tag, "Error handling incoming payload", e)
@@ -226,15 +236,16 @@ class MqttSignalingClient(
     }
 
     override suspend fun sendEnvelope(envelope: SignalingEnvelope): Boolean {
+        val startPublish = System.currentTimeMillis()
         val connected = awaitConnection()
         if (!connected) {
-            AppLogger.e(tag, "Cannot send envelope: Signaling client is not connected")
+            AppLogger.e(tag, "Cannot send envelope to ${envelope.recipientId}: Signaling client not connected to broker")
             return false
         }
 
         val currentClient = client
         if (currentClient == null) {
-            AppLogger.e(tag, "Cannot send envelope: Client instance is null")
+            AppLogger.e(tag, "Cannot send envelope to ${envelope.recipientId}: MQTT client instance is null")
             return false
         }
 
@@ -249,11 +260,12 @@ class MqttSignalingClient(
                     .payload(payload)
                     .send()
                     .whenComplete { _, throwable ->
+                        val duration = System.currentTimeMillis() - startPublish
                         if (throwable != null) {
-                            AppLogger.e(tag, "Failed publishing to $targetTopic", throwable)
+                            AppLogger.e(tag, "Failed publishing to $targetTopic after ${duration}ms: ${throwable.message}", throwable)
                             if (continuation.isActive) continuation.resume(false)
                         } else {
-                            AppLogger.i(tag, "Published envelope to $targetTopic")
+                            AppLogger.i(tag, "Published envelope to $targetTopic (${payload.size} bytes in ${duration}ms)")
                             if (continuation.isActive) continuation.resume(true)
                         }
                     }
@@ -271,6 +283,7 @@ class MqttSignalingClient(
     ): Boolean {
         val plaintextJson = message.toJson()
         val envelope = securityRepository.createEnvelope(recipientId, plaintextJson, secretOrDerivedKey)
+        AppLogger.d(tag, "Sending [${message.javaClass.simpleName}] to $recipientId (envelope nonce=${envelope.nonce}, size=${envelope.ciphertext.length} chars)")
         return sendEnvelope(envelope)
     }
 

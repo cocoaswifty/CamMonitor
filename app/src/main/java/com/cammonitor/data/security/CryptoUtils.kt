@@ -29,6 +29,10 @@ object CryptoUtils {
     private val secureRandom = SecureRandom()
 
     fun getOrCreateDeviceKeyPair(alias: String): KeyPair {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            throw UnsupportedOperationException("KeyStore PURPOSE_AGREE_KEY requires Android 12 (API 31)+")
+        }
+
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         if (keyStore.containsAlias(alias)) {
             try {

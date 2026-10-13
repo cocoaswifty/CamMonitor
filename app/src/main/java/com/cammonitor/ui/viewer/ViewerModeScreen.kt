@@ -30,6 +30,7 @@ import com.cammonitor.data.security.CryptoUtils
 import com.cammonitor.log.AppLogger
 import com.cammonitor.ui.theme.StatusLive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.webrtc.*
 
@@ -74,20 +75,31 @@ fun ViewerModeScreen(
     LaunchedEffect(targetCamera) {
         if (targetCamera == null) {
             connectionStatus = "No paired camera found"
+            AppLogger.w("ViewerMode", "No paired camera found in repository")
             return@LaunchedEffect
         }
 
-        signalingClient.startListening()
+        val startTime = System.currentTimeMillis()
+        AppLogger.i("ViewerMode", "Starting WebRTC connection to camera: ${targetCamera.name} (${targetCamera.deviceId})")
+        val isMqttListening = signalingClient.startListening()
+        AppLogger.i("ViewerMode", "Signaling client startListening completed (connected=$isMqttListening)")
 
         val remotePubKey = CryptoUtils.publicKeyFromBase64(targetCamera.publicKeyBase64)
         val sharedKey = CryptoUtils.deriveEcdhKey(securityRepo.getKeyPair().private, remotePubKey)
 
         val pc = webRtcManager.createPeerConnection(targetCamera.deviceId) { candidate ->
+            val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+            AppLogger.d("ViewerMode", "Forwarding local ICE candidate to camera: mid=${candidate.sdpMid}, type=$typeMatch")
             val iceMsg = SignalingMessage.IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)
             coroutineScope.launch {
-                signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
+                val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
+                AppLogger.d("ViewerMode", "Sent ICE candidate to camera (success=$sent, mid=${candidate.sdpMid})")
             }
-        } ?: return@LaunchedEffect
+        } ?: run {
+            AppLogger.e("ViewerMode", "Failed creating PeerConnection for ${targetCamera.deviceId}")
+            connectionStatus = "Initialization Failed"
+            return@LaunchedEffect
+        }
 
         // Create WebRTC Offer
         val constraints = MediaConstraints().apply {
@@ -95,14 +107,21 @@ fun ViewerModeScreen(
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
         }
 
+        var localOfferDesc: SessionDescription? = null
+
         pc.createOffer(object : SdpObserver {
             override fun onCreateSuccess(desc: SessionDescription) {
+                val elapsed = System.currentTimeMillis() - startTime
+                AppLogger.i("ViewerMode", "Local Offer created (+${elapsed}ms, SDP size=${desc.description.length} chars). Setting local description...")
                 pc.setLocalDescription(object : SdpObserver {
                     override fun onSetSuccess() {
-                        AppLogger.i("ViewerMode", "Local Offer set, sending to camera: ${targetCamera.deviceId}")
+                        val setElapsed = System.currentTimeMillis() - startTime
+                        AppLogger.i("ViewerMode", "Local Offer set successfully (+${setElapsed}ms), transmitting to camera: ${targetCamera.deviceId}")
+                        localOfferDesc = desc
                         val offerMsg = SignalingMessage.Offer(desc.description)
                         coroutineScope.launch {
-                            signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
+                            val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
+                            AppLogger.i("ViewerMode", "Transmitted initial Offer to camera (success=$sent)")
                         }
                     }
                     override fun onCreateSuccess(p0: SessionDescription?) {}
@@ -115,15 +134,40 @@ fun ViewerModeScreen(
             override fun onSetFailure(err: String?) {}
         }, constraints)
 
+        // Periodic Offer retry while waiting for camera to come online / answer
+        val retryJob = coroutineScope.launch {
+            var attempt = 1
+            while (isActive && pc.remoteDescription == null) {
+                delay(3000L)
+                val offer = localOfferDesc
+                if (pc.remoteDescription == null && offer != null) {
+                    attempt++
+                    val elapsed = System.currentTimeMillis() - startTime
+                    AppLogger.i("ViewerMode", "Waiting for camera answer (+${elapsed}ms); re-transmitting Offer (attempt #$attempt)...")
+                    val offerMsg = SignalingMessage.Offer(offer.description)
+                    val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
+                    AppLogger.i("ViewerMode", "Re-transmitted Offer (attempt #$attempt, sent=$sent)")
+                    if (attempt >= 15 && pc.connectionState() == PeerConnection.PeerConnectionState.NEW) {
+                        connectionStatus = "Waiting for camera to respond..."
+                    }
+                }
+            }
+        }
+
         // Observe incoming messages
         signalingClient.incomingMessages.collect { (senderId, msg) ->
             if (senderId == targetCamera.deviceId) {
                 when (msg) {
                     is SignalingMessage.Answer -> {
+                        val elapsed = System.currentTimeMillis() - startTime
+                        AppLogger.i("ViewerMode", "Received remote Answer from camera (+${elapsed}ms, SDP size=${msg.sdp.length} chars). Applying to PeerConnection...")
+                        retryJob.cancel()
                         val answerDesc = SessionDescription(SessionDescription.Type.ANSWER, msg.sdp)
                         pc.setRemoteDescription(object : SdpObserver {
                             override fun onSetSuccess() {
-                                AppLogger.i("ViewerMode", "Remote Answer applied successfully")
+                                val setElapsed = System.currentTimeMillis() - startTime
+                                AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
+                                webRtcManager.drainRemoteIceCandidates(targetCamera.deviceId)
                                 connectionStatus = "Live (720p 20fps)"
                             }
                             override fun onCreateSuccess(p0: SessionDescription?) {}
@@ -132,10 +176,15 @@ fun ViewerModeScreen(
                         }, answerDesc)
                     }
                     is SignalingMessage.IceCandidate -> {
+                        val typeMatch = Regex("typ\\s+(\\w+)").find(msg.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+                        AppLogger.d("ViewerMode", "Received remote ICE candidate from camera: mid=${msg.sdpMid}, index=${msg.sdpMLineIndex}, type=$typeMatch")
                         val candidate = IceCandidate(msg.sdpMid, msg.sdpMLineIndex, msg.sdp)
                         webRtcManager.addRemoteIceCandidate(targetCamera.deviceId, candidate)
                     }
                     is SignalingMessage.Reject -> {
+                        val elapsed = System.currentTimeMillis() - startTime
+                        AppLogger.w("ViewerMode", "Camera rejected connection (+${elapsed}ms): ${msg.reason}")
+                        retryJob.cancel()
                         connectionStatus = "Camera Rejected: ${msg.reason}"
                     }
                     else -> {}
@@ -160,14 +209,19 @@ fun ViewerModeScreen(
     // Observe WebRTC connection state
     LaunchedEffect(Unit) {
         webRtcManager.connectionState.collect { state ->
+            AppLogger.i("ViewerMode", "WebRTC PeerConnectionState changed to: $state")
             when (state) {
                 PeerConnection.PeerConnectionState.CONNECTED -> connectionStatus = "Live (720p 20fps)"
                 PeerConnection.PeerConnectionState.CONNECTING -> connectionStatus = "Connecting to camera..."
                 PeerConnection.PeerConnectionState.FAILED -> {
                     connectionStatus = "Connection Failed"
                     hasSymmetricNatError = true
+                    AppLogger.e("ViewerMode", "WebRTC connection failed (potential symmetric NAT traversal failure)")
                 }
-                PeerConnection.PeerConnectionState.DISCONNECTED -> connectionStatus = "Disconnected"
+                PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                    connectionStatus = "Disconnected"
+                    AppLogger.w("ViewerMode", "WebRTC connection disconnected")
+                }
                 else -> {}
             }
         }
@@ -197,6 +251,11 @@ fun ViewerModeScreen(
                     surfaceRenderer = this
                     webRtcManager.attachRemoteRenderer(this)
                 }
+            },
+            onRelease = { renderer ->
+                webRtcManager.detachRemoteRenderer(renderer)
+                renderer.release()
+                surfaceRenderer = null
             },
             modifier = Modifier
                 .fillMaxSize()
