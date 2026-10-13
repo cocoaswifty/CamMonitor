@@ -295,8 +295,10 @@ Every signaling envelope sent over the public MQTT broker is structured as:
      * Normal state: Mic icon + `"Hold to Talk"`. Container color: `SecondaryContainer`.
      * Pressed state: Active soundwave animation + `"Transmitting..."`. Container color: `Primary` (pulsing).
      * Gesture: Managed via `Modifier.pointerInput` detecting press-down (`PTT_START`) and release/cancel (`PTT_STOP`).
-  3. **Audio Mute/Unmute Button (`FilledTonalIconToggleButton`):**
-     * Icon: `VolumeUp` / `VolumeOff`. Toggles incoming PA audio playback.
+  3. **Audio Playback Button (`FilledTonalIconToggleButton`):**
+     * Icon: `VolumeUp` (active / playing) / `VolumeOff` (inactive / muted). Toggles incoming PA audio playback.
+     * Default State: **OFF (Muted)** upon initial launch to prevent acoustic feedback / howling when devices are co-located in the same room.
+     * Persistence: The audio playback state is persistently saved in secure preferences (`viewer_audio_playback_enabled`) and restored automatically across app sessions. WebRTC incoming audio track enabled state is synchronized immediately on connection.
 
 #### 5.4.4 Connection & Error State Overlays
 * **Connecting / Reconnecting State:**
@@ -381,10 +383,10 @@ flowchart LR
   * Guarantees support for `SplashScreen` API (`androidx.core:core-splashscreen`).
   * Enforces Android 12 background service launch restrictions (Foreground Service must start with immediate user action or active foreground state).
 * **`compileSdk = 37` & `targetSdk = 37` (Android 17):**
-  * **Mandatory Foreground Service Types (API 34+):** Service declared with `android:foregroundServiceType="camera|connectedDevice"`.
+  * **Mandatory Foreground Service Types (API 34+):** Service declared with `android:foregroundServiceType="camera"` (only requires `CAMERA` and `FOREGROUND_SERVICE_CAMERA` permissions).
   * **Runtime Notification Permission (API 33+):** `POST_NOTIFICATIONS` requested prior to launching PA Camera Service.
   * **16 KB Memory Page Size Support (API 35+):** Native `.so` libraries must be built with `-Wl,-z,max-page-size=16384` to prevent crashes on modern 16KB page size devices.
-  * **Edge-to-Edge by Default (API 35+):** Enforced full edge-to-edge layout via `enableEdgeToEdge()` in Jetpack Compose activities.
+  * **Edge-to-Edge & Cutout Inset Handling (API 35+):** Enforced full edge-to-edge layout via `enableEdgeToEdge()` in Jetpack Compose activities. Fullscreen video viewports draw edge-to-edge behind system bars, while interactive HUD overlays and `Scaffold` screens strictly consume `WindowInsets.safeDrawing` / `.safeDrawingPadding()` to eliminate overlap with status bars, navigation bars, and camera display cutouts.
 
 ### 7.2 Required Android Permissions & Manifest Configuration
 
@@ -394,10 +396,10 @@ flowchart LR
 | `android.permission.RECORD_AUDIO` | Yes | Yes (PTT) | 31 | Audio streaming & Push-to-Talk intercom |
 | `android.permission.INTERNET` | Yes | Yes | 31 | WebRTC & MQTT signaling |
 | `android.permission.ACCESS_NETWORK_STATE` | Yes | Yes | 31 | Network type detection & ICE restart |
+| `android.permission.CHANGE_NETWORK_STATE` | Yes | No | 31 | Wi-Fi socket routing optimization |
 | `android.permission.POST_NOTIFICATIONS` | Yes | No | 33 | Sticky Foreground Service notification |
 | `android.permission.FOREGROUND_SERVICE` | Yes | No | 31 | Background service persistence |
 | `android.permission.FOREGROUND_SERVICE_CAMERA` | Yes | No | 34 | Background camera capture permission |
-| `android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE` | Yes | No | 34 | Network streaming background permission |
 | `android.permission.WAKE_LOCK` | Yes | No | 31 | Prevent CPU sleep during OLED black screen |
 | `android.permission.MODIFY_AUDIO_SETTINGS` | Yes | Yes | 31 | Speakerphone & Hardware AEC routing |
 

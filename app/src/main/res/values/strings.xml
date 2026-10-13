@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">CamMonitor</string>
+    <string name="start_camera_mode">Start Camera Mode</string>
+    <string name="start_viewer_mode">Start Viewer Mode</string>
+    <string name="exit_camera_mode">Exit Camera Mode</string>
+    <string name="exit_viewer_mode">Exit Viewer Mode</string>
+    <string name="rotate_90">Rotate</string>
+    <string name="notification_channel_name">CamMonitor Service</string>
+    <string name="notification_title">CamMonitor Active</string>
+    <string name="notification_text">Camera stream is active in the background</string>
+</resources>
