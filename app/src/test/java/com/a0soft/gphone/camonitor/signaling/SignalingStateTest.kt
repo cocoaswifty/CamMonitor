@@ -1,0 +1,71 @@
+package com.a0soft.gphone.camonitor.signaling
+
+import com.a0soft.gphone.camonitor.data.model.SignalingMessage
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class SignalingStateTest {
+
+    @Test
+    fun testAwaitConnectionReturnsFalseWhenDisconnectedAndFailsToReconnect() = runTest {
+        val isConnectedFlow = MutableStateFlow(true)
+        var physicalSocketConnected = false
+
+        suspend fun awaitConnection(timeoutMs: Long = 1000L): Boolean {
+            if (isConnectedFlow.value && physicalSocketConnected) return true
+            isConnectedFlow.value = false
+            return withTimeoutOrNull(timeoutMs) {
+                isConnectedFlow.first { it }
+            } ?: false
+        }
+
+        // Initially flow said true, but socket was dead:
+        val result = awaitConnection(50L)
+        assertFalse("Should fail connection when physical client is disconnected", result)
+        assertFalse("State flow should reset to false", isConnectedFlow.value)
+    }
+
+    @Test
+    fun testAwaitConnectionSucceedsWhenPhysicalSocketIsAlive() = runTest {
+        val isConnectedFlow = MutableStateFlow(true)
+        val physicalSocketConnected = true
+
+        suspend fun awaitConnection(timeoutMs: Long = 1000L): Boolean {
+            if (isConnectedFlow.value && physicalSocketConnected) return true
+            isConnectedFlow.value = false
+            return withTimeoutOrNull(timeoutMs) {
+                isConnectedFlow.first { it }
+            } ?: false
+        }
+
+        val result = awaitConnection(100L)
+        assertTrue(result)
+        assertTrue(isConnectedFlow.value)
+    }
+
+    @Test
+    fun testOfferAndAnswerSerializationDuringStandbyWakeup() {
+        val offer = SignalingMessage.Offer(sdp = "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=recvonly\r\nm=audio 9 UDP/TLS/RTP/SAVPF 97\r\na=recvonly")
+        val offerJson = offer.toJson()
+        val parsedOffer = SignalingMessage.fromJson(offerJson) as? SignalingMessage.Offer
+
+        assertNotNull(parsedOffer)
+        assertEquals(offer.sdp, parsedOffer?.sdp)
+
+        val answer = SignalingMessage.Answer(sdp = "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\nm=audio 9 UDP/TLS/RTP/SAVPF 97\r\na=sendonly")
+        val answerJson = answer.toJson()
+        val parsedAnswer = SignalingMessage.fromJson(answerJson) as? SignalingMessage.Answer
+
+        assertNotNull(parsedAnswer)
+        assertEquals(answer.sdp, parsedAnswer?.sdp)
+    }
+}

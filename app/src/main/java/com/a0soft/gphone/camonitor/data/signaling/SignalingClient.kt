@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.data.signaling
+package com.a0soft.gphone.camonitor.data.signaling
 
 import com.a0soft.gphone.camonitor.data.model.SignalingEnvelope
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
@@ -64,7 +64,8 @@ class MqttSignalingClient(
     }
 
     private suspend fun connectWithRetry(topic: String): Boolean = connectMutex.withLock {
-        if (_isConnectedFlow.value) return@withLock true
+        val currentClient = client
+        if (_isConnectedFlow.value && currentClient != null && currentClient.state.isConnected) return@withLock true
 
         for (endpoint in brokerEndpoints) {
             AppLogger.i(tag, "Attempting connection to ${endpoint.host}:${endpoint.port} (ssl=${endpoint.useSsl})...")
@@ -98,6 +99,15 @@ class MqttSignalingClient(
                 .identifier(clientId)
                 .serverHost(endpoint.host)
                 .serverPort(endpoint.port)
+                .automaticReconnectWithDefaultConfig()
+                .addConnectedListener {
+                    AppLogger.i(tag, "MQTT connected to ${endpoint.host}:${endpoint.port}")
+                    _isConnectedFlow.value = true
+                }
+                .addDisconnectedListener { context ->
+                    AppLogger.w(tag, "MQTT disconnected from ${endpoint.host}:${endpoint.port}: ${context.cause.message}")
+                    _isConnectedFlow.value = false
+                }
 
             val newClient = if (endpoint.useSsl) {
                 builder.sslWithDefaultConfig().buildAsync()
@@ -228,7 +238,10 @@ class MqttSignalingClient(
     }
 
     private suspend fun awaitConnection(timeoutMs: Long = 10_000L): Boolean {
-        if (_isConnectedFlow.value) return true
+        val currentClient = client
+        if (_isConnectedFlow.value && currentClient != null && currentClient.state.isConnected) return true
+        _isConnectedFlow.value = false
+        AppLogger.i(tag, "awaitConnection: client is not connected, initiating connection...")
         startListening()
         return withTimeoutOrNull(timeoutMs) {
             _isConnectedFlow.first { it }
@@ -244,8 +257,9 @@ class MqttSignalingClient(
         }
 
         val currentClient = client
-        if (currentClient == null) {
-            AppLogger.e(tag, "Cannot send envelope to ${envelope.recipientId}: MQTT client instance is null")
+        if (currentClient == null || !currentClient.state.isConnected) {
+            AppLogger.e(tag, "Cannot send envelope to ${envelope.recipientId}: MQTT client is disconnected")
+            _isConnectedFlow.value = false
             return false
         }
 
@@ -263,6 +277,7 @@ class MqttSignalingClient(
                         val duration = System.currentTimeMillis() - startPublish
                         if (throwable != null) {
                             AppLogger.e(tag, "Failed publishing to $targetTopic after ${duration}ms: ${throwable.message}", throwable)
+                            _isConnectedFlow.value = false
                             if (continuation.isActive) continuation.resume(false)
                         } else {
                             AppLogger.i(tag, "Published envelope to $targetTopic (${payload.size} bytes in ${duration}ms)")
@@ -271,6 +286,7 @@ class MqttSignalingClient(
                     }
             } catch (e: Exception) {
                 AppLogger.e(tag, "Exception during publish to $targetTopic", e)
+                _isConnectedFlow.value = false
                 if (continuation.isActive) continuation.resume(false)
             }
         }

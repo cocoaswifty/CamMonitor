@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.ui.viewer
+package com.a0soft.gphone.camonitor.ui.viewer
 
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
@@ -101,11 +101,15 @@ fun ViewerModeScreen(
             return@LaunchedEffect
         }
 
-        // Create WebRTC Offer
-        val constraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-        }
+        // Explicit Unified Plan transceivers: Video (mid=0), Audio (mid=1)
+        pc.addTransceiver(
+            MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+        )
+        pc.addTransceiver(
+            MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+        )
 
         var localOfferDesc: SessionDescription? = null
 
@@ -132,7 +136,7 @@ fun ViewerModeScreen(
             override fun onSetSuccess() {}
             override fun onCreateFailure(err: String?) { AppLogger.e("ViewerMode", "Failed creating offer: $err") }
             override fun onSetFailure(err: String?) {}
-        }, constraints)
+        }, MediaConstraints())
 
         // Periodic Offer retry while waiting for camera to come online / answer
         val retryJob = coroutineScope.launch {
@@ -168,7 +172,7 @@ fun ViewerModeScreen(
                                 val setElapsed = System.currentTimeMillis() - startTime
                                 AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
                                 webRtcManager.drainRemoteIceCandidates(targetCamera.deviceId)
-                                connectionStatus = "Live (720p 20fps)"
+                                connectionStatus = "Starting stream..."
                             }
                             override fun onCreateSuccess(p0: SessionDescription?) {}
                             override fun onSetFailure(err: String?) { AppLogger.e("ViewerMode", "Failed setting remote answer: $err") }

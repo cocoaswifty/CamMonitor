@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.data.webrtc
+package com.a0soft.gphone.camonitor.data.webrtc
 
 import android.content.Context
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
@@ -94,7 +94,26 @@ class WebRtcManager(private val context: Context) {
             return
         }
 
-        val capturer = enumerator.createCapturer(backCameraName, null)
+        val capturer = enumerator.createCapturer(backCameraName, object : CameraVideoCapturer.CameraEventsHandler {
+            override fun onCameraError(errorDescription: String) {
+                AppLogger.e(tag, "Camera error: $errorDescription")
+            }
+            override fun onCameraDisconnected() {
+                AppLogger.w(tag, "Camera disconnected")
+            }
+            override fun onCameraFreezed(errorDescription: String) {
+                AppLogger.e(tag, "Camera freezed: $errorDescription")
+            }
+            override fun onCameraOpening(cameraName: String) {
+                AppLogger.i(tag, "Camera opening: $cameraName")
+            }
+            override fun onFirstFrameAvailable() {
+                AppLogger.i(tag, "First camera frame available from hardware")
+            }
+            override fun onCameraClosed() {
+                AppLogger.i(tag, "Camera closed")
+            }
+        })
         videoCapturer = capturer
 
         surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
@@ -127,6 +146,12 @@ class WebRtcManager(private val context: Context) {
 
     fun stopCameraCapture() {
         try {
+            peerConnections.values.forEach { it.dispose() }
+            peerConnections.clear()
+            dataChannels.values.forEach { it.dispose() }
+            dataChannels.clear()
+            _activeViewersCount.value = 0
+
             videoCapturer?.stopCapture()
             videoCapturer?.dispose()
             videoCapturer = null
@@ -202,13 +227,20 @@ class WebRtcManager(private val context: Context) {
             override fun onTrack(transceiver: RtpTransceiver?) {
                 val track = transceiver?.receiver?.track()
                 if (track is VideoTrack) {
+                    AppLogger.i(tag, "Remote VideoTrack received: id=${track.id()}, state=${track.state()}, enabled=${track.enabled()}")
+                    track.setEnabled(true)
+                    remoteVideoTrack?.let { oldTrack ->
+                        remoteRenderer?.let { r -> oldTrack.removeSink(r) }
+                    }
                     remoteVideoTrack = track
-                    remoteRenderer?.let { track.addSink(it) }
-                    AppLogger.i(tag, "Remote VideoTrack received and attached to renderer")
+                    remoteRenderer?.let { r ->
+                        track.addSink(r)
+                        AppLogger.i(tag, "Attached remote VideoTrack to remoteRenderer")
+                    }
                 } else if (track is AudioTrack) {
+                    AppLogger.i(tag, "Remote AudioTrack received for viewer mode: id=${track.id()}, state=${track.state()}")
                     remoteAudioTrack = track
                     track.setEnabled(isRemoteAudioEnabled)
-                    AppLogger.i(tag, "Remote AudioTrack received for viewer mode (enabled=$isRemoteAudioEnabled)")
                 }
             }
 
@@ -290,7 +322,10 @@ class WebRtcManager(private val context: Context) {
 
     fun attachLocalRenderer(renderer: SurfaceViewRenderer) {
         localRenderer = renderer
-        localVideoTrack?.addSink(renderer)
+        localVideoTrack?.let { track ->
+            track.removeSink(renderer)
+            track.addSink(renderer)
+        }
     }
 
     fun detachLocalRenderer(renderer: SurfaceViewRenderer) {
@@ -302,7 +337,10 @@ class WebRtcManager(private val context: Context) {
 
     fun attachRemoteRenderer(renderer: SurfaceViewRenderer) {
         remoteRenderer = renderer
-        remoteVideoTrack?.addSink(renderer)
+        remoteVideoTrack?.let { track ->
+            track.removeSink(renderer)
+            track.addSink(renderer)
+        }
     }
 
     fun detachRemoteRenderer(renderer: SurfaceViewRenderer) {
@@ -361,6 +399,11 @@ class WebRtcManager(private val context: Context) {
         pendingRemoteIceCandidates.remove(peerId)
         dataChannels.remove(peerId)?.dispose()
         peerConnections.remove(peerId)?.dispose()
+        remoteVideoTrack?.let { track ->
+            remoteRenderer?.let { r -> track.removeSink(r) }
+        }
+        remoteVideoTrack = null
+        remoteAudioTrack = null
         updateActiveViewersCount()
         AppLogger.i(tag, "Closed WebRTC connection with $peerId")
     }
