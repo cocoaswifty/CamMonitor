@@ -1,8 +1,9 @@
-﻿package com.a0soft.gphone.camonitor.data.camera
+package com.a0soft.gphone.camonitor.data.camera
 
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import com.a0soft.gphone.camonitor.CamMonitorApp
 import com.a0soft.gphone.camonitor.log.AppLogger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,13 +39,25 @@ class TorchManager(private val context: Context) {
     }
 
     fun setTorch(enabled: Boolean) {
+        _isTorchOn.value = enabled
+        // 1. If WebRTC camera capture is active, update the repeating request on Camera2Session
+        try {
+            val app = CamMonitorApp.instance
+            if (app.webRtcManager.setTorch(enabled)) {
+                AppLogger.i(tag, "Torch mode set via WebRtcManager: $enabled")
+                return
+            }
+        } catch (e: Exception) {
+            AppLogger.w(tag, "Failed setting torch via WebRtcManager: ${e.message}")
+        }
+
+        // 2. Otherwise (camera not open by WebRTC), use standard CameraManager.setTorchMode
         val id = backCameraId ?: return
         try {
             cameraManager.setTorchMode(id, enabled)
-            _isTorchOn.value = enabled
-            AppLogger.i(tag, "Torch mode set to: $enabled")
+            AppLogger.i(tag, "Torch mode set via CameraManager: $enabled")
         } catch (e: Exception) {
-            AppLogger.e(tag, "Failed to toggle torch mode", e)
+            AppLogger.e(tag, "Failed to toggle torch mode via CameraManager", e)
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.data.security
+package com.a0soft.gphone.camonitor.data.security
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -70,7 +70,7 @@ class DefaultSecurityRepository(
     private var otpExpiresAt: Long = 0L
 
     // In-memory nonce cache with timestamps for anti-replay
-    private val seenNonces = mutableMapOf<String, Long>()
+    private val seenNonces = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     init {
         var id = prefs.getString("device_id", null)
@@ -327,12 +327,6 @@ class DefaultSecurityRepository(
     }
 
     private fun cleanOldNonces(now: Long) {
-        val iterator = seenNonces.entries.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (now - entry.value > 60_000L) {
-                iterator.remove()
-            }
-        }
+        seenNonces.entries.removeIf { now - it.value > 60_000L }
     }
 }

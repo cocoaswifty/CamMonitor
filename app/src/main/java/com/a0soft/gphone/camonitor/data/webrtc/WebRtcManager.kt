@@ -1,6 +1,12 @@
 package com.a0soft.gphone.camonitor.data.webrtc
 
 import android.content.Context
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CaptureRequest
+import android.os.Handler
+import android.util.Range
+import android.view.Surface
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.log.AppLogger
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -173,6 +179,63 @@ class WebRtcManager(private val context: Context) {
             AppLogger.i(tag, "Camera capture stopped and hardware released")
         } catch (e: Exception) {
             AppLogger.e(tag, "Error stopping camera capture", e)
+        }
+    }
+
+    fun setTorch(enabled: Boolean): Boolean {
+        val capturer = videoCapturer ?: return false
+        return try {
+            val cameraCapturerClass = capturer.javaClass.superclass ?: Class.forName("org.webrtc.CameraCapturer")
+            val sessionField = cameraCapturerClass.getDeclaredField("currentSession").apply {
+                isAccessible = true
+            }
+            val session = sessionField.get(capturer) ?: return false
+            val sessionClass = session.javaClass
+
+            val deviceField = sessionClass.getDeclaredField("cameraDevice").apply { isAccessible = true }
+            val sessionCaptureField = sessionClass.getDeclaredField("captureSession").apply { isAccessible = true }
+            val surfaceField = sessionClass.getDeclaredField("surface").apply { isAccessible = true }
+            val handlerField = sessionClass.getDeclaredField("cameraThreadHandler").apply { isAccessible = true }
+            val captureFormatField = sessionClass.getDeclaredField("captureFormat").apply { isAccessible = true }
+            val fpsUnitFactorField = sessionClass.getDeclaredField("fpsUnitFactor").apply { isAccessible = true }
+
+            val cameraDevice = deviceField.get(session) as? CameraDevice ?: return false
+            val captureSession = sessionCaptureField.get(session) as? CameraCaptureSession ?: return false
+            val surface = surfaceField.get(session) as? Surface ?: return false
+            val handler = handlerField.get(session) as? Handler ?: return false
+            val captureFormat = captureFormatField.get(session) as? CameraEnumerationAndroid.CaptureFormat
+            val fpsUnitFactor = fpsUnitFactorField.getInt(session)
+
+            handler.post {
+                try {
+                    val builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
+                    if (captureFormat != null && fpsUnitFactor > 0) {
+                        val fpsRange = Range(
+                            captureFormat.framerate.min / fpsUnitFactor,
+                            captureFormat.framerate.max / fpsUnitFactor
+                        )
+                        builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fpsRange)
+                    }
+                    builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                    builder.set(CaptureRequest.CONTROL_AE_LOCK, false)
+                    builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                    if (enabled) {
+                        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
+                    } else {
+                        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+                    }
+                    builder.addTarget(surface)
+                    captureSession.setRepeatingRequest(builder.build(), null, handler)
+                    AppLogger.i(tag, "Torch mode successfully updated on active Camera2Session: enabled=$enabled")
+                } catch (e: Exception) {
+                    AppLogger.e(tag, "Failed to update torch on active Camera2Session", e)
+                }
+            }
+            true
+        } catch (e: Exception) {
+            AppLogger.w(tag, "Failed accessing Camera2Session for torch: ${e.message}")
+            false
         }
     }
 
