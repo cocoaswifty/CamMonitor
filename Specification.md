@@ -195,8 +195,10 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Actions:
     * `IconButton(Icons.Default.Description)` $\to$ Opens **In-App Log Viewer**.
     * `IconButton(Icons.Default.Devices)` $\to$ Opens **Paired Devices Management**.
-* **Body Layout:**
-  * Centered vertical column with two primary Material 3 `ElevatedCard` components:
+* **Body Layout & Adaptive Orientation:**
+  * Enabled with vertical scroll (`Modifier.verticalScroll(rememberScrollState())`) to guarantee complete access across all screen densities and font scales.
+  * **Portrait Mode:** Cards are centered vertically in a `Column` with 24dp vertical spacing.
+  * **Landscape Mode:** Cards adapt dynamically into a side-by-side `Row` with 16dp spacing where each card takes equal width (`Modifier.weight(1f)`), ensuring 100% of both cards and their action buttons are fully visible without cropping.
   1. **Camera Mode Card:**
      * Icon: `Icons.Default.Videocam` (48dp, Primary color tint).
      * Title: `"Start Camera Mode"` (TitleLarge).
