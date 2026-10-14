@@ -271,6 +271,9 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Top Bar:** Back button and Flashlight toggle button (to illuminate paper or dark screens).
 * **Bottom Prompt:** Pill card with `"Align QR code within the frame to pair"`.
 * **Error State:** If camera permission denied, displays standard M3 permission rationale card with a `"Grant Camera Permission"` button.
+* **Lifecycle & Resource Coexistence:**
+  * CameraX `ProcessCameraProvider` and analyzer executor are explicitly unbound and shut down upon QR code detection, `AndroidView.onRelease`, and `DisposableEffect.onDispose` to release physical camera hardware immediately and prevent OS `CameraService` eviction conflicts when navigating to WebRTC Camera Mode.
+  * `WebRtcManager.startCameraCapture()` proactively unbinds any dangling CameraX session prior to initializing WebRTC's `Camera2Capturer`, tracks active frame generation (`isCameraCapturing`), and registers an automatic 1-second recovery restart via `onCameraUnexpectedClosed` if the camera hardware is closed or evicted.
 
 ---
 

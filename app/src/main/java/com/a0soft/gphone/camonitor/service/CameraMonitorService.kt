@@ -126,6 +126,19 @@ class CameraMonitorService : Service() {
         val app = CamMonitorApp.instance
         _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
         updateNotification("Waiting for viewers to connect")
+
+        app.webRtcManager.onCameraUnexpectedClosed = {
+            serviceScope.launch {
+                if (_streamingState.value == CameraStreamingState.STREAMING ||
+                    _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
+                ) {
+                    AppLogger.w(tag, "Unexpected camera closure detected, attempting recovery restart in 1s...")
+                    delay(1000L)
+                    app.webRtcManager.startCameraCapture()
+                }
+            }
+        }
+
         app.webRtcManager.startCameraCapture()
 
         // Start listening to signaling
@@ -365,6 +378,7 @@ class CameraMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         AppLogger.i(tag, "CameraMonitorService destroyed")
+        CamMonitorApp.instance.webRtcManager.onCameraUnexpectedClosed = null
         com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.restoreNormalMode(this)
         cancelInactivityTimer()
         stopBatteryBroadcast()

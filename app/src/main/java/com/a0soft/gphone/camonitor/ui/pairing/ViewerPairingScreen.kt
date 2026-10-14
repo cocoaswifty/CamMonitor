@@ -61,10 +61,31 @@ fun ViewerPairingScreen(
     var pairingStatus by remember { mutableStateOf("Align QR code within the frame to pair") }
     var cameraControl by remember { mutableStateOf<androidx.camera.core.CameraControl?>(null) }
     var isTorchEnabled by remember { mutableStateOf(false) }
+    var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var analyzerExecutor by remember { mutableStateOf<java.util.concurrent.ExecutorService?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
             securityRepo.clearPairingOtp()
+            try {
+                cameraControl?.enableTorch(false)
+                cameraProviderRef?.unbindAll()
+                analyzerExecutor?.shutdown()
+            } catch (e: Exception) {
+                AppLogger.e("ViewerPairing", "Error unbinding CameraX on dispose", e)
+            }
+            try {
+                val future = ProcessCameraProvider.getInstance(context)
+                if (future.isDone) {
+                    future.get().unbindAll()
+                } else {
+                    future.addListener({
+                        try {
+                            future.get().unbindAll()
+                        } catch (_: Exception) {}
+                    }, ContextCompat.getMainExecutor(context))
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -107,6 +128,7 @@ fun ViewerPairingScreen(
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                     cameraProviderFuture.addListener({
                         val cameraProvider = cameraProviderFuture.get()
+                        cameraProviderRef = cameraProvider
                         val preview = Preview.Builder().build().also {
                             it.setSurfaceProvider(previewView.surfaceProvider)
                         }
@@ -115,7 +137,8 @@ fun ViewerPairingScreen(
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
 
-                        val executor = Executors.newSingleThreadExecutor()
+                        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                        analyzerExecutor = executor
                         val reader = MultiFormatReader()
 
                         imageAnalysis.setAnalyzer(executor) { imageProxy ->
@@ -129,6 +152,11 @@ fun ViewerPairingScreen(
 
                             if (result != null) {
                                 isScanning = false
+                                try {
+                                    cameraControl?.enableTorch(false)
+                                    cameraProvider.unbindAll()
+                                    executor.shutdown()
+                                } catch (_: Exception) {}
                                 coroutineScope.launch {
                                     handleScannedQr(
                                         result,
@@ -159,6 +187,13 @@ fun ViewerPairingScreen(
                     }, ContextCompat.getMainExecutor(ctx))
 
                     previewView
+                },
+                onRelease = {
+                    try {
+                        cameraControl?.enableTorch(false)
+                        cameraProviderRef?.unbindAll()
+                        analyzerExecutor?.shutdown()
+                    } catch (_: Exception) {}
                 },
                 modifier = Modifier.fillMaxSize()
             )

@@ -93,9 +93,47 @@ class WebRtcManager(private val context: Context) {
     // SENDER (PA) SETUP
     // ----------------------------------------------------
 
+    @Volatile
+    private var isCameraCapturing = false
+    var onCameraUnexpectedClosed: (() -> Unit)? = null
+
+    private fun releaseCameraHardwareOnly() {
+        try {
+            isCameraCapturing = false
+            videoCapturer?.stopCapture()
+            videoCapturer?.dispose()
+            videoCapturer = null
+
+            surfaceTextureHelper?.dispose()
+            surfaceTextureHelper = null
+
+            localRenderer?.let { localVideoTrack?.removeSink(it) }
+            localVideoTrack?.dispose()
+            localVideoTrack = null
+            videoSource?.dispose()
+            videoSource = null
+        } catch (e: Exception) {
+            AppLogger.e(tag, "Error releasing camera hardware only", e)
+        }
+    }
+
     fun startCameraCapture(width: Int = 1280, height: Int = 720, fps: Int = 20) {
         val factory = peerConnectionFactory ?: return
-        if (localVideoTrack != null) return // Already running
+
+        // Unbind any dangling CameraX session that could lock or evict the camera hardware
+        try {
+            val future = androidx.camera.lifecycle.ProcessCameraProvider.getInstance(context)
+            if (future.isDone) {
+                future.get().unbindAll()
+            }
+        } catch (_: Exception) {}
+
+        if (localVideoTrack != null && isCameraCapturing) return // Already running healthy
+
+        if (localVideoTrack != null && !isCameraCapturing) {
+            AppLogger.w(tag, "localVideoTrack existed but capturer was not active. Releasing and restarting camera hardware.")
+            releaseCameraHardwareOnly()
+        }
 
         val enumerator = Camera2Enumerator(context)
         val deviceNames = enumerator.deviceNames
@@ -109,9 +147,19 @@ class WebRtcManager(private val context: Context) {
         val capturer = enumerator.createCapturer(backCameraName, object : CameraVideoCapturer.CameraEventsHandler {
             override fun onCameraError(errorDescription: String) {
                 AppLogger.e(tag, "Camera error: $errorDescription")
+                val wasCapturing = isCameraCapturing
+                isCameraCapturing = false
+                if (wasCapturing) {
+                    onCameraUnexpectedClosed?.invoke()
+                }
             }
             override fun onCameraDisconnected() {
                 AppLogger.w(tag, "Camera disconnected")
+                val wasCapturing = isCameraCapturing
+                isCameraCapturing = false
+                if (wasCapturing) {
+                    onCameraUnexpectedClosed?.invoke()
+                }
             }
             override fun onCameraFreezed(errorDescription: String) {
                 AppLogger.e(tag, "Camera freezed: $errorDescription")
@@ -121,9 +169,15 @@ class WebRtcManager(private val context: Context) {
             }
             override fun onFirstFrameAvailable() {
                 AppLogger.i(tag, "First camera frame available from hardware")
+                isCameraCapturing = true
             }
             override fun onCameraClosed() {
-                AppLogger.i(tag, "Camera closed")
+                AppLogger.i(tag, "Camera closed (wasCapturing=$isCameraCapturing)")
+                val wasCapturing = isCameraCapturing
+                isCameraCapturing = false
+                if (wasCapturing) {
+                    onCameraUnexpectedClosed?.invoke()
+                }
             }
         })
         videoCapturer = capturer
@@ -142,15 +196,29 @@ class WebRtcManager(private val context: Context) {
         localRenderer?.let { track.addSink(it) }
 
         // Setup audio
-        val audioConstraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+        if (localAudioTrack == null) {
+            val audioConstraints = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+                mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
+                mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+            }
+            val aSource = factory.createAudioSource(audioConstraints)
+            audioSource = aSource
+            localAudioTrack = factory.createAudioTrack("CAM_AUDIO_TRACK", aSource).apply {
+                setEnabled(true)
+            }
         }
-        val aSource = factory.createAudioSource(audioConstraints)
-        audioSource = aSource
-        localAudioTrack = factory.createAudioTrack("CAM_AUDIO_TRACK", aSource).apply {
-            setEnabled(true)
+
+        // Re-attach to any active PeerConnections if they exist
+        peerConnections.values.forEach { pc ->
+            localVideoTrack?.let { vTrack ->
+                val videoSender = pc.senders.firstOrNull { it.track()?.kind() == "video" }
+                if (videoSender != null) {
+                    videoSender.setTrack(vTrack, false)
+                } else {
+                    pc.addTrack(vTrack, listOf("CAM_STREAM"))
+                }
+            }
         }
 
         AppLogger.i(tag, "Camera capture started: ${width}x${height}@${fps}fps (back camera)")
@@ -158,24 +226,14 @@ class WebRtcManager(private val context: Context) {
 
     fun stopCameraCapture() {
         try {
+            isCameraCapturing = false
             peerConnections.values.forEach { it.dispose() }
             peerConnections.clear()
             dataChannels.values.forEach { it.dispose() }
             dataChannels.clear()
             _activeViewersCount.value = 0
 
-            videoCapturer?.stopCapture()
-            videoCapturer?.dispose()
-            videoCapturer = null
-
-            surfaceTextureHelper?.dispose()
-            surfaceTextureHelper = null
-
-            localRenderer?.let { localVideoTrack?.removeSink(it) }
-            localVideoTrack?.dispose()
-            localVideoTrack = null
-            videoSource?.dispose()
-            videoSource = null
+            releaseCameraHardwareOnly()
 
             localAudioTrack?.dispose()
             localAudioTrack = null
