@@ -278,6 +278,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * **Rename Action:** Subtle pencil icon next to name to trigger the Rename Dialog on the fly.
   * **Viewer Count Pill:** Eye icon + text `"1 / 2 Viewers"` (or `"2 / 2 Viewers"`).
   * **Flashlight Status:** Torch icon (lit yellow if active, gray if inactive).
+  * **Intercom Live Banner:** Prominent primary color pill badge with `VolumeUp` icon and text `"Intercom Live (Viewer Speaking)"` displayed automatically with smooth fade-in/out whenever a connected viewer holds the PTT intercom button.
 * **Bottom Control Bar (SurfaceContainer semi-transparent overlay):**
   * `FilledTonalButton`: `"Turn Off Display (OLED Saver)"` $\to$ Manually triggers black screen mode.
   * `Button(colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error))`: `"Exit Camera Mode"` $\to$ Confirms and terminates stream.
@@ -346,7 +347,10 @@ Every signaling envelope sent over the public MQTT broker is structured as:
      * Design: Large capsule button (`Button` with `shape = CircleShape`).
      * Normal state: Mic icon + `"Hold to Talk"`. Container color: `SecondaryContainer`.
      * Pressed state: Active soundwave animation + `"Transmitting..."`. Container color: `Primary` (pulsing).
-     * Gesture: Managed via `Modifier.pointerInput` detecting press-down (`PTT_START`) and release/cancel (`PTT_STOP`).
+     * Gesture: Managed via `Modifier.pointerInput` with `detectTapGestures(onPress = { ... awaitRelease() ... })`.
+     * Voice Transmission & Feedback Prevention:
+       * When held: Unmutes viewer's local WebRTC audio track (`viewerAudioTrack.setEnabled(true)`), temporarily ducks remote PA speaker playback on PB to prevent local howling/feedback, sends `PTT_START` over DataChannel, and routes camera audio to loud speakerphone.
+       * When released: Instantly mutes viewer's audio track (`viewerAudioTrack.setEnabled(false)`), sends `PTT_STOP` over DataChannel, and restores previous audio playback state.
   4. **Audio Playback Button (`FilledTonalIconToggleButton`):**
      * Icon: `VolumeUp` (active / playing) / `VolumeOff` (inactive / muted). Toggles incoming PA audio playback.
      * Default State: **OFF (Muted)** upon initial launch to prevent acoustic feedback / howling when devices are co-located in the same room.
@@ -428,6 +432,10 @@ flowchart LR
   * Target frame rate: 20 FPS.
   * Target bitrate: ~1.5 Mbps, dynamic down to 500 Kbps on packet loss.
 * **Audio Pipeline:** 16 kHz mono Opus codec. Hardware Acoustic Echo Cancellation (AEC) and Noise Suppression (NS) enabled.
+  * **Bidirectional Audio Intercom:** Viewer device (PB) captures microphone audio and streams it to Camera device (PA) via a dedicated WebRTC `SEND_RECV` audio transceiver.
+  * **Audio Routing & Intercom Loudspeaker:** On Android, WebRTC audio streams via `STREAM_VOICE_CALL`. Devices route intercom audio to `AudioDeviceInfo.TYPE_BUILTIN_SPEAKER` (API 31+ `setCommunicationDevice` or legacy `isSpeakerphoneOn`) under `AudioManager.MODE_IN_COMMUNICATION` with volume boosted to $\ge 85\%$ to ensure loud and clear intercom audio from the camera unit.
+  * **Push-to-Talk (PTT) Protocol:** PB holds microphone audio track in muted state (`enabled = false`) until the PTT button is held. When held, PB enables the track, transmits audio, and signals `PTT_START` via DataChannel. Releasing PTT immediately mutes the track and signals `PTT_STOP`. PB automatically ducks local speaker playback while transmitting to prevent acoustic feedback.
+  * **Camera Intercom UI Notification:** Camera device (PA) displays a live visual banner (`"Intercom Live (Viewer Speaking)"`) when receiving active viewer intercom audio.
 * **Data Channel:** WebRTC `RTCDataChannel` (label: `"control"`, ordered, reliable). Created by PB on the Offer SDP so SCTP negotiation succeeds without renegotiation. Exchanges bidirectional low-latency commands (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`). PA broadcasts battery status immediately upon DataChannel `OPEN` and periodically every 15 seconds; PB queries PA battery on connection.
 
 ### 6.2 NAT Traversal Scope & Limitations

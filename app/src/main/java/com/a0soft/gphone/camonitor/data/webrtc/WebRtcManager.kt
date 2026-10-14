@@ -50,11 +50,17 @@ class WebRtcManager(private val context: Context) {
     private val _activeViewersCount = MutableStateFlow(0)
     val activeViewersCount: StateFlow<Int> = _activeViewersCount.asStateFlow()
 
-    // Receiver state (PB)
+    // Receiver state (PB & PA)
     private var remoteVideoTrack: VideoTrack? = null
     private var remoteAudioTrack: AudioTrack? = null
+    private val remoteAudioTracks = mutableMapOf<String, AudioTrack>()
     private var isRemoteAudioEnabled = false
     private var remoteRenderer: SurfaceViewRenderer? = null
+
+    // Viewer PTT audio capture state (PB)
+    private var viewerAudioSource: AudioSource? = null
+    private var viewerAudioTrack: AudioTrack? = null
+    private var isPttActive = false
 
     private val iceServers = listOf(
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
@@ -304,9 +310,18 @@ class WebRtcManager(private val context: Context) {
                         AppLogger.w(tag, "Remote VideoTrack received, but remoteRenderer is null (waiting for UI attach)")
                     }
                 } else if (track is AudioTrack) {
-                    AppLogger.i(tag, "Remote AudioTrack received for viewer mode: id=${track.id()}, state=${track.state()}")
+                    AppLogger.i(tag, "Remote AudioTrack received from $peerId: id=${track.id()}, state=${track.state()}")
+                    remoteAudioTracks[peerId] = track
                     remoteAudioTrack = track
-                    track.setEnabled(isRemoteAudioEnabled)
+                    val isCamera = localVideoTrack != null
+                    if (isCamera) {
+                        track.setEnabled(true)
+                        com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(context)
+                        AppLogger.i(tag, "Camera (PA) enabled remote AudioTrack from viewer $peerId and routed to speaker")
+                    } else {
+                        track.setEnabled(isRemoteAudioEnabled)
+                        AppLogger.i(tag, "Viewer (PB) remote AudioTrack enabled: $isRemoteAudioEnabled")
+                    }
                 }
             }
 
@@ -436,6 +451,57 @@ class WebRtcManager(private val context: Context) {
         AppLogger.i(tag, "Remote audio track enabled: $enabled")
     }
 
+    fun startViewerAudioCapture(): AudioTrack? {
+        val factory = peerConnectionFactory ?: run {
+            AppLogger.e(tag, "Cannot start viewer audio capture: PeerConnectionFactory is null")
+            return null
+        }
+        if (viewerAudioTrack != null) return viewerAudioTrack
+
+        val audioConstraints = MediaConstraints().apply {
+            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+        }
+        val aSource = factory.createAudioSource(audioConstraints)
+        viewerAudioSource = aSource
+        val track = factory.createAudioTrack("VIEWER_PTT_AUDIO_TRACK", aSource).apply {
+            setEnabled(false) // Initially muted until PTT is pressed
+        }
+        viewerAudioTrack = track
+        AppLogger.i(tag, "Viewer PTT audio capture started (initially muted)")
+        return track
+    }
+
+    fun stopViewerAudioCapture() {
+        try {
+            viewerAudioTrack?.setEnabled(false)
+            viewerAudioTrack?.dispose()
+            viewerAudioTrack = null
+            viewerAudioSource?.dispose()
+            viewerAudioSource = null
+            isPttActive = false
+            AppLogger.i(tag, "Viewer PTT audio capture stopped")
+        } catch (e: Exception) {
+            AppLogger.e(tag, "Error stopping viewer audio capture", e)
+        }
+    }
+
+    fun setPttActive(active: Boolean) {
+        isPttActive = active
+        viewerAudioTrack?.setEnabled(active)
+        AppLogger.i(tag, "Viewer PTT active set to: $active (track enabled=${viewerAudioTrack?.enabled()})")
+    }
+
+    fun onPttCommand(peerId: String, isStart: Boolean) {
+        val track = remoteAudioTracks[peerId] ?: remoteAudioTrack
+        track?.setEnabled(isStart)
+        if (isStart) {
+            com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(context)
+        }
+        AppLogger.i(tag, "onPttCommand: peerId=$peerId, isStart=$isStart, trackId=${track?.id()}")
+    }
+
     private val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableList<IceCandidate>>()
     private val addedRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
 
@@ -494,13 +560,17 @@ class WebRtcManager(private val context: Context) {
             remoteRenderer?.let { r -> track.removeSink(r) }
         }
         remoteVideoTrack = null
-        remoteAudioTrack = null
+        remoteAudioTracks.remove(peerId)
+        if (remoteAudioTrack == null || remoteAudioTracks.isEmpty()) {
+            remoteAudioTrack = null
+        }
         updateActiveViewersCount()
         AppLogger.i(tag, "Closed WebRTC connection with $peerId")
     }
 
     fun closeAll() {
         stopCameraCapture()
+        stopViewerAudioCapture()
         pendingRemoteIceCandidates.clear()
         addedRemoteIceCandidates.clear()
         dataChannels.values.forEach { it.dispose() }
@@ -512,6 +582,7 @@ class WebRtcManager(private val context: Context) {
         remoteRenderer?.let { r -> remoteVideoTrack?.removeSink(r) }
         remoteVideoTrack = null
         remoteAudioTrack = null
+        remoteAudioTracks.clear()
         isRemoteAudioEnabled = false
         AppLogger.i(tag, "All WebRTC connections closed")
     }

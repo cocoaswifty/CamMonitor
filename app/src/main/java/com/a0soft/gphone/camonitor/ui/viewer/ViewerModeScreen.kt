@@ -32,6 +32,7 @@ import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import com.a0soft.gphone.camonitor.log.AppLogger
+import com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager
 import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.theme.StatusLive
@@ -81,6 +82,8 @@ fun ViewerModeScreen(
 
     fun exitViewer() {
         isUserExited = true
+        webRtcManager.stopViewerAudioCapture()
+        AudioRoutingManager.restoreNormalMode(context)
         webRtcManager.closeAll()
         coroutineScope.launch {
             try {
@@ -152,15 +155,25 @@ fun ViewerModeScreen(
             return@LaunchedEffect
         }
 
-        // Explicit Unified Plan transceivers: Video (mid=0), Audio (mid=1)
+        // Explicit Unified Plan transceivers: Video (mid=0, RECV_ONLY), Audio (mid=1, SEND_RECV)
         pc.addTransceiver(
             MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
         )
-        pc.addTransceiver(
-            MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
-            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
-        )
+        val pttAudioTrack = webRtcManager.startViewerAudioCapture()
+        if (pttAudioTrack != null) {
+            pc.addTransceiver(
+                pttAudioTrack,
+                RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_RECV)
+            )
+            AppLogger.i("ViewerMode", "Added SEND_RECV audio transceiver with viewer PTT track")
+        } else {
+            pc.addTransceiver(
+                MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
+                RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+            )
+            AppLogger.w("ViewerMode", "Viewer PTT track was null, falling back to RECV_ONLY audio")
+        }
 
         webRtcManager.createDataChannelForSender(targetCamera.deviceId)
 
@@ -602,27 +615,34 @@ fun ViewerModeScreen(
                         color = if (isPttPressed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
                         modifier = Modifier
                             .height(56.dp)
-                            .pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        if (event.changes.any { it.pressed }) {
-                                            if (!isPttPressed) {
-                                                isPttPressed = true
-                                                targetCamera?.let {
-                                                    webRtcManager.sendDataChannelCommand(it.deviceId, ControlCommand.PttStart)
-                                                }
+                            .pointerInput(targetCamera?.deviceId) {
+                                detectTapGestures(
+                                    onPress = {
+                                        isPttPressed = true
+                                        val wasAudioEnabled = isAudioEnabled
+                                        if (wasAudioEnabled) {
+                                            webRtcManager.setRemoteAudioEnabled(false)
+                                        }
+                                        webRtcManager.setPttActive(true)
+                                        targetCamera?.let {
+                                            webRtcManager.sendDataChannelCommand(it.deviceId, ControlCommand.PttStart)
+                                        }
+                                        AppLogger.i("ViewerMode", "PTT pressed: transmitting voice")
+                                        try {
+                                            awaitRelease()
+                                        } finally {
+                                            isPttPressed = false
+                                            webRtcManager.setPttActive(false)
+                                            targetCamera?.let {
+                                                webRtcManager.sendDataChannelCommand(it.deviceId, ControlCommand.PttStop)
                                             }
-                                        } else {
-                                            if (isPttPressed) {
-                                                isPttPressed = false
-                                                targetCamera?.let {
-                                                    webRtcManager.sendDataChannelCommand(it.deviceId, ControlCommand.PttStop)
-                                                }
+                                            if (wasAudioEnabled) {
+                                                webRtcManager.setRemoteAudioEnabled(true)
                                             }
+                                            AppLogger.i("ViewerMode", "PTT released: audio stopped")
                                         }
                                     }
-                                }
+                                )
                             }
                     ) {
                         Row(
@@ -786,7 +806,10 @@ fun ViewerModeScreen(
     }
 
     DisposableEffect(Unit) {
+        AudioRoutingManager.routeToSpeaker(context)
         onDispose {
+            webRtcManager.stopViewerAudioCapture()
+            AudioRoutingManager.restoreNormalMode(context)
             surfaceRenderer?.let { webRtcManager.detachRemoteRenderer(it) }
             surfaceRenderer?.release()
         }

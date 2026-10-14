@@ -43,6 +43,9 @@ class CameraMonitorService : Service() {
     private val _streamingState = MutableStateFlow(CameraStreamingState.IDLE)
     val streamingState: StateFlow<CameraStreamingState> = _streamingState.asStateFlow()
 
+    private val _isPttReceiving = MutableStateFlow(false)
+    val isPttReceiving: StateFlow<Boolean> = _isPttReceiving.asStateFlow()
+
     private var inactivityJob: Job? = null
     private var batteryBroadcastJob: Job? = null
 
@@ -63,6 +66,7 @@ class CameraMonitorService : Service() {
         acquireWakeLock()
         acquireWifiLock()
         startForegroundServiceNotification()
+        com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(this)
     }
 
     private fun acquireWakeLock() {
@@ -135,7 +139,7 @@ class CameraMonitorService : Service() {
         // Listen to DataChannel commands from viewers
         serviceScope.launch {
             app.webRtcManager.dataChannelCommands.collect { (peerId, cmd) ->
-                handleViewerCommand(cmd)
+                handleViewerCommand(peerId, cmd)
             }
         }
 
@@ -313,17 +317,22 @@ class CameraMonitorService : Service() {
         }
     }
 
-    private fun handleViewerCommand(cmd: ControlCommand) {
+    private fun handleViewerCommand(peerId: String, cmd: ControlCommand) {
         val app = CamMonitorApp.instance
         when (cmd) {
             is ControlCommand.Torch -> {
                 app.torchManager.setTorch(cmd.enabled)
             }
             is ControlCommand.PttStart -> {
-                AppLogger.i(tag, "Viewer started Push-to-Talk")
+                AppLogger.i(tag, "Viewer $peerId started Push-to-Talk")
+                _isPttReceiving.value = true
+                com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(this)
+                app.webRtcManager.onPttCommand(peerId, true)
             }
             is ControlCommand.PttStop -> {
-                AppLogger.i(tag, "Viewer stopped Push-to-Talk")
+                AppLogger.i(tag, "Viewer $peerId stopped Push-to-Talk")
+                _isPttReceiving.value = false
+                app.webRtcManager.onPttCommand(peerId, false)
             }
             is ControlCommand.Rename -> {
                 // Not handled by sender
@@ -349,6 +358,7 @@ class CameraMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         AppLogger.i(tag, "CameraMonitorService destroyed")
+        com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.restoreNormalMode(this)
         cancelInactivityTimer()
         stopBatteryBroadcast()
         serviceScope.cancel()

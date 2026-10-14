@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,6 +39,7 @@ import com.a0soft.gphone.camonitor.service.CameraMonitorService
 import com.a0soft.gphone.camonitor.service.CameraStreamingState
 import com.a0soft.gphone.camonitor.ui.theme.StatusLive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 
@@ -55,6 +57,7 @@ fun CameraModeScreen(
 
     var service by remember { mutableStateOf<CameraMonitorService?>(null) }
     var streamingState by remember { mutableStateOf(CameraStreamingState.IDLE) }
+    var isPttReceiving by remember { mutableStateOf(false) }
     val activeViewers by app.webRtcManager.activeViewersCount.collectAsState()
     val isTorchOn by app.torchManager.isTorchOn.collectAsState()
 
@@ -112,10 +115,18 @@ fun CameraModeScreen(
         }
     }
 
-    // Observe service streaming state
+    // Observe service streaming state and PTT intercom state
     LaunchedEffect(service) {
-        service?.streamingState?.collect { state ->
-            streamingState = state
+        val s = service ?: return@LaunchedEffect
+        launch {
+            s.streamingState.collect { state ->
+                streamingState = state
+            }
+        }
+        launch {
+            s.isPttReceiving.collect { receiving ->
+                isPttReceiving = receiving
+            }
         }
     }
 
@@ -277,6 +288,31 @@ fun CameraModeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    AnimatedVisibility(
+                        visible = isPttReceiving,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = Color.White)
+                                Text(
+                                    text = "Intercom Live (Viewer Speaking)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
                     Text(
                         text = cameraName,
                         style = MaterialTheme.typography.headlineSmall,
