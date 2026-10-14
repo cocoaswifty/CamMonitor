@@ -402,9 +402,12 @@ flowchart LR
 * **Out-of-Scope Scenario:** Both phones behind Carrier-Grade Symmetric NAT simultaneously across WAN.
 
 ### 6.3 Signaling Resiliency & Reconnection Protocol
+* **IPv4 DNS Candidate Priority for Cellular / Dual-Stack Networks:**
+  * Dual-stack cellular (LTE / 5G) network interfaces on Android prioritize IPv6 resolution by default. However, certain public MQTT brokers (such as `broker.hivemq.com`) advertise AAAA DNS records whose endpoints actively refuse connections on port 1883/8883.
+  * `MqttSignalingClient` queries all IP addresses via `InetAddress.getAllByName()` and prioritizes IPv4 candidates (`Inet4Address`) before IPv6 candidates, guaranteeing seamless connections across both IPv4 Wi-Fi and IPv6/464XLAT cellular connections.
 * **Generation-Guarded MQTT Client Lifecycle (`clientGeneration`):**
   * Prevents race conditions and false disconnection events caused by delayed disconnect callbacks from earlier client instances when network drops occur.
-  * Disconnect callbacks matching only the active `clientGeneration` update `_isConnectedFlow` and trigger the backoff loop.
+  * Disconnect callbacks matching only the active `clientGeneration` and clients that were actually connected (`hasEverConnected`) update `_isConnectedFlow` and trigger the backoff loop.
 * **Autonomous Exponential Backoff Reconnection Loop:**
   * When disconnected from the broker while signaling is desired, an asynchronous reconnect loop retries connection with exponential backoff: `2000ms -> 4000ms -> 8000ms -> 15000ms` (capped at 15s).
   * Automatically resubscribes to the device's incoming RX topic (`cammonitor/<deviceId>/rx`) upon successful reconnection.

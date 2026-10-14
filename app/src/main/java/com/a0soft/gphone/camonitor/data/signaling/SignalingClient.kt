@@ -105,6 +105,27 @@ class MqttSignalingClient(
         return success
     }
 
+    private suspend fun resolveHostCandidates(host: String): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val addresses = java.net.InetAddress.getAllByName(host)
+            val ipv4List = addresses.filterIsInstance<java.net.Inet4Address>().mapNotNull { it.hostAddress }
+            val ipv6List = addresses.filterIsInstance<java.net.Inet6Address>().mapNotNull { it.hostAddress }
+            // Dual-stack cellular networks prefer IPv6 by default, but some public MQTT brokers 
+            // (e.g. broker.hivemq.com) have broken/refused AAAA endpoints on port 1883/8883.
+            // Prefer IPv4 addresses first to ensure robust cellular & Wi-Fi connectivity.
+            val candidates = ipv4List + ipv6List
+            if (candidates.isNotEmpty()) {
+                AppLogger.d(tag, "Resolved $host candidates: $candidates")
+                candidates
+            } else {
+                listOf(host)
+            }
+        } catch (e: Exception) {
+            AppLogger.w(tag, "Failed DNS resolution for $host: ${e.message}, using raw hostname")
+            listOf(host)
+        }
+    }
+
     private suspend fun connectWithRetry(topic: String): Boolean = connectMutex.withLock {
         if (!isListeningWanted) return@withLock false
         val currentClient = activeClient
@@ -116,23 +137,30 @@ class MqttSignalingClient(
         activeClient = null
 
         val currentGen = ++clientGeneration
-        AppLogger.i(tag, "Attempting connection to $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (gen=$currentGen)...")
+        val candidates = resolveHostCandidates(PRIMARY_BROKER_HOST)
+        AppLogger.i(tag, "Attempting connection to $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (candidates=$candidates, gen=$currentGen)...")
 
-        val success = try {
-            withTimeoutOrNull(10_000L) {
-                attemptConnect(PRIMARY_BROKER_HOST, PRIMARY_BROKER_PORT, false, topic, currentGen)
-            } ?: false
-        } catch (e: Exception) {
-            AppLogger.w(tag, "Connection error for $PRIMARY_BROKER_HOST: ${e.message}")
-            false
+        var success = false
+        for (targetHost in candidates) {
+            success = try {
+                withTimeoutOrNull(8_000L) {
+                    attemptConnect(targetHost, PRIMARY_BROKER_PORT, false, topic, currentGen)
+                } ?: false
+            } catch (e: Exception) {
+                AppLogger.w(tag, "Connection error for $targetHost: ${e.message}")
+                false
+            }
+            if (success) {
+                AppLogger.i(tag, "Successfully connected to $targetHost:$PRIMARY_BROKER_PORT (host=$PRIMARY_BROKER_HOST, gen=$currentGen)")
+                break
+            }
         }
 
         if (success) {
-            AppLogger.i(tag, "Successfully connected to $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (gen=$currentGen)")
             _isConnectedFlow.value = true
             return@withLock true
         } else {
-            AppLogger.w(tag, "Connection attempt failed on $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT")
+            AppLogger.w(tag, "All candidate connection attempts failed for $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (gen=$currentGen)")
             _isConnectedFlow.value = false
             return@withLock false
         }
@@ -147,6 +175,7 @@ class MqttSignalingClient(
     ): Boolean {
         return suspendCancellableCoroutine { continuation ->
             val clientId = "cammonitor-" + UUID.randomUUID().toString().take(8)
+            var hasEverConnected = false
 
             val builder = MqttClient.builder()
                 .useMqttVersion3()
@@ -155,13 +184,14 @@ class MqttSignalingClient(
                 .serverPort(port)
                 .addConnectedListener {
                     if (generation == clientGeneration) {
-                        AppLogger.i(tag, "MQTT connected callback (gen=$generation)")
+                        hasEverConnected = true
+                        AppLogger.i(tag, "MQTT connected callback (gen=$generation, host=$host)")
                         _isConnectedFlow.value = true
                     }
                 }
                 .addDisconnectedListener { context ->
-                    if (generation == clientGeneration) {
-                        AppLogger.w(tag, "MQTT disconnected (gen=$generation): ${context.cause.message}")
+                    if (generation == clientGeneration && hasEverConnected) {
+                        AppLogger.w(tag, "MQTT disconnected (gen=$generation, host=$host): ${context.cause.message}")
                         _isConnectedFlow.value = false
                         if (isListeningWanted) {
                             val deviceId = securityRepository.getDeviceId()
