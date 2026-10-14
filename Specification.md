@@ -198,7 +198,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Body Layout & Adaptive Orientation:**
   * Enabled with vertical scroll (`Modifier.verticalScroll(rememberScrollState())`) to guarantee complete access across all screen densities and font scales.
   * **Portrait Mode:** Cards are centered vertically in a `Column` with 24dp vertical spacing.
-  * **Landscape Mode:** Cards adapt dynamically into a side-by-side `Row` with 16dp spacing where each card takes equal width (`Modifier.weight(1f)`), ensuring 100% of both cards and their action buttons are fully visible without cropping.
+  * **Landscape Mode:** Cards adapt dynamically into a side-by-side `Row` with 16dp spacing where each card takes equal width (`Modifier.weight(1f)`) and equal height (`height(IntrinsicSize.Max)` and `fillMaxHeight()`), ensuring 100% of both cards and their action buttons are fully visible without cropping and symmetrically aligned.
   1. **Camera Mode Card:**
      * Icon: `Icons.Default.Videocam` (48dp, Primary color tint).
      * Title: `"Start Camera Mode"` (TitleLarge).

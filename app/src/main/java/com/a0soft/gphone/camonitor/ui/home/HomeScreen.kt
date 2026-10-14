@@ -74,56 +74,65 @@ fun HomeScreen(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer
             )
         ) {
-            Column(modifier = Modifier.padding(if (isLandscape) 16.dp else 24.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Videocam,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(if (isLandscape) 40.dp else 48.dp)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Start Camera Mode",
-                            style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+            Column(
+                modifier = if (isLandscape) {
+                    Modifier.fillMaxSize().padding(16.dp)
+                } else {
+                    Modifier.fillMaxWidth().padding(24.dp)
+                },
+                verticalArrangement = if (isLandscape) Arrangement.SpaceBetween else Arrangement.Top
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(if (isLandscape) 40.dp else 48.dp)
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Start Camera Mode",
+                                style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = when {
+                                    pairedViewers.isEmpty() -> "No viewers paired (tap to pair)"
+                                    pairedViewers.size == 1 -> "Paired with ${pairedViewers.first().name}"
+                                    else -> "${pairedViewers.size} viewers paired (broadcasting ready)"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(if (isLandscape) 12.dp else 16.dp))
+
+                    // Camera Name & Rename action
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showRenameDialog = true },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
-                            text = when {
-                                pairedViewers.isEmpty() -> "No viewers paired (tap to pair)"
-                                pairedViewers.size == 1 -> "Paired with ${pairedViewers.first().name}"
-                                else -> "${pairedViewers.size} viewers paired (broadcasting ready)"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "Camera Name: $cameraName",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Rename",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-                }
-
-                Spacer(modifier = Modifier.height(if (isLandscape) 12.dp else 16.dp))
-
-                // Camera Name & Rename action
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showRenameDialog = true },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Camera Name: $cameraName",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Rename",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
                 }
 
                 if (pairedViewers.isNotEmpty()) {
@@ -175,32 +184,41 @@ fun HomeScreen(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer
             )
         ) {
-            Column(modifier = Modifier.padding(if (isLandscape) 16.dp else 24.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Visibility,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(if (isLandscape) 40.dp else 48.dp)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Start Viewer Mode",
-                            style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+            Column(
+                modifier = if (isLandscape) {
+                    Modifier.fillMaxSize().padding(16.dp)
+                } else {
+                    Modifier.fillMaxWidth().padding(24.dp)
+                },
+                verticalArrangement = if (isLandscape) Arrangement.SpaceBetween else Arrangement.Top
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(if (isLandscape) 40.dp else 48.dp)
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = when {
-                                pairedCameras.isEmpty() -> "No paired camera (tap to pair)"
-                                pairedCameras.size == 1 -> "Paired with ${pairedCameras.first().name}"
-                                else -> "${pairedCameras.size} cameras paired (tap to choose)"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Start Viewer Mode",
+                                style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = when {
+                                    pairedCameras.isEmpty() -> "No paired camera (tap to pair)"
+                                    pairedCameras.size == 1 -> "Paired with ${pairedCameras.first().name}"
+                                    else -> "${pairedCameras.size} cameras paired (tap to choose)"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
@@ -266,12 +284,13 @@ fun HomeScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(IntrinsicSize.Max)
                         .padding(horizontal = 24.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CameraCard(modifier = Modifier.weight(1f))
-                    ViewerCard(modifier = Modifier.weight(1f))
+                    CameraCard(modifier = Modifier.weight(1f).fillMaxHeight())
+                    ViewerCard(modifier = Modifier.weight(1f).fillMaxHeight())
                 }
             } else {
                 Column(
