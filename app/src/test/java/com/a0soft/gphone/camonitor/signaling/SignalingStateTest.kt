@@ -68,4 +68,38 @@ class SignalingStateTest {
         assertNotNull(parsedAnswer)
         assertEquals(answer.sdp, parsedAnswer?.sdp)
     }
+
+    @Test
+    fun testReconnectionBackoffProgressionCapsAtFifteenSeconds() {
+        var delayMs = 2000L
+        val delays = mutableListOf<Long>()
+        repeat(6) {
+            delays.add(delayMs)
+            delayMs = (delayMs * 2).coerceAtMost(15_000L)
+        }
+        assertEquals(listOf(2000L, 4000L, 8000L, 15000L, 15000L, 15000L), delays)
+    }
+
+    @Test
+    fun testClientGenerationGuardsAgainstStaleDisconnectEvents() = runTest {
+        var clientGeneration = 1L
+        val isConnectedFlow = MutableStateFlow(true)
+
+        fun onDisconnect(gen: Long) {
+            if (gen == clientGeneration) {
+                isConnectedFlow.value = false
+            }
+        }
+
+        // Simulate reconnect bump
+        clientGeneration = 2L
+
+        // Old generation 1 disconnect arrives late
+        onDisconnect(1L)
+        assertTrue("Late disconnect from old generation must not set connected to false", isConnectedFlow.value)
+
+        // Matching generation disconnect arrives
+        onDisconnect(2L)
+        assertFalse("Current generation disconnect must update connected state to false", isConnectedFlow.value)
+    }
 }

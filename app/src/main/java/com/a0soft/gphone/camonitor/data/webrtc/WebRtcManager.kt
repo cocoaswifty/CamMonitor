@@ -185,7 +185,7 @@ class WebRtcManager(private val context: Context) {
             AppLogger.e(tag, "Cannot create PeerConnection: PeerConnectionFactory is null")
             return null
         }
-        closePeer(peerId)
+        closePeer(peerId, keepPendingCandidates = true)
         AppLogger.i(tag, "Creating new PeerConnection for $peerId with ${iceServers.size} ICE servers")
 
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
@@ -234,8 +234,11 @@ class WebRtcManager(private val context: Context) {
                     }
                     remoteVideoTrack = track
                     remoteRenderer?.let { r ->
+                        track.removeSink(r)
                         track.addSink(r)
                         AppLogger.i(tag, "Attached remote VideoTrack to remoteRenderer")
+                    } ?: run {
+                        AppLogger.w(tag, "Remote VideoTrack received, but remoteRenderer is null (waiting for UI attach)")
                     }
                 } else if (track is AudioTrack) {
                     AppLogger.i(tag, "Remote AudioTrack received for viewer mode: id=${track.id()}, state=${track.state()}")
@@ -353,6 +356,7 @@ class WebRtcManager(private val context: Context) {
         remoteVideoTrack?.let { track ->
             track.removeSink(renderer)
             track.addSink(renderer)
+            AppLogger.i(tag, "attachRemoteRenderer: Connected remoteVideoTrack to renderer")
         }
     }
 
@@ -370,15 +374,23 @@ class WebRtcManager(private val context: Context) {
     }
 
     private val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableList<IceCandidate>>()
+    private val addedRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
 
     fun addRemoteIceCandidate(peerId: String, candidate: IceCandidate) {
+        val seen = addedRemoteIceCandidates.getOrPut(peerId) { java.util.Collections.synchronizedSet(mutableSetOf()) }
+        val candidateKey = "${candidate.sdpMid}:${candidate.sdpMLineIndex}:${candidate.sdp}"
+        if (!seen.add(candidateKey)) {
+            // Duplicate candidate ignored
+            return
+        }
+
         val pc = peerConnections[peerId]
         val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
         if (pc != null && pc.remoteDescription != null) {
             val added = pc.addIceCandidate(candidate)
             AppLogger.i(tag, "Added remote ICE candidate directly for $peerId: type=$typeMatch, mid=${candidate.sdpMid}, added=$added")
         } else {
-            val list = pendingRemoteIceCandidates.getOrPut(peerId) { mutableListOf() }
+            val list = pendingRemoteIceCandidates.getOrPut(peerId) { java.util.Collections.synchronizedList(mutableListOf()) }
             list.add(candidate)
             AppLogger.i(tag, "Buffered remote ICE candidate for $peerId: type=$typeMatch, mid=${candidate.sdpMid} (pending count=${list.size}, pc=${if (pc != null) "exists(waiting remoteDesc)" else "null"})")
         }
@@ -408,8 +420,11 @@ class WebRtcManager(private val context: Context) {
         _activeViewersCount.value = count
     }
 
-    fun closePeer(peerId: String) {
-        pendingRemoteIceCandidates.remove(peerId)
+    fun closePeer(peerId: String, keepPendingCandidates: Boolean = false) {
+        if (!keepPendingCandidates) {
+            pendingRemoteIceCandidates.remove(peerId)
+            addedRemoteIceCandidates.remove(peerId)
+        }
         dataChannels.remove(peerId)?.dispose()
         peerConnections.remove(peerId)?.dispose()
         remoteVideoTrack?.let { track ->
@@ -423,13 +438,15 @@ class WebRtcManager(private val context: Context) {
 
     fun closeAll() {
         stopCameraCapture()
+        pendingRemoteIceCandidates.clear()
+        addedRemoteIceCandidates.clear()
         dataChannels.values.forEach { it.dispose() }
         dataChannels.clear()
         peerConnections.values.forEach { it.dispose() }
         peerConnections.clear()
         _activeViewersCount.value = 0
-        localRenderer = null
-        remoteRenderer = null
+        localRenderer?.let { r -> localVideoTrack?.removeSink(r) }
+        remoteRenderer?.let { r -> remoteVideoTrack?.removeSink(r) }
         remoteVideoTrack = null
         remoteAudioTrack = null
         isRemoteAudioEnabled = false

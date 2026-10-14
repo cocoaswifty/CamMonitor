@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.a0soft.gphone.camonitor.CamMonitorApp
@@ -65,10 +66,22 @@ fun ViewerModeScreen(
     var pbBatteryInfo by remember { mutableStateOf(BatteryHelper.getBatteryInfo(context)) }
 
     var surfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+    var reconnectTrigger by remember { mutableStateOf(0) }
+    var isUserExited by remember { mutableStateOf(false) }
+
+    fun exitViewer() {
+        isUserExited = true
+        webRtcManager.closeAll()
+        coroutineScope.launch {
+            try {
+                signalingClient.stopListening()
+            } catch (_: Exception) {}
+        }
+        onExitViewerMode()
+    }
 
     BackHandler {
-        webRtcManager.closeAll()
-        onExitViewerMode()
+        exitViewer()
     }
 
     // Sync audio playback enabled state to WebRTC manager
@@ -84,25 +97,40 @@ fun ViewerModeScreen(
         }
     }
 
-    // Connect to camera on launch
-    LaunchedEffect(targetCamera) {
+    // Ensure remoteRenderer is always attached when surfaceRenderer is available
+    LaunchedEffect(surfaceRenderer) {
+        surfaceRenderer?.let {
+            webRtcManager.attachRemoteRenderer(it)
+        }
+    }
+
+    // Connect to camera on launch and on reconnectTrigger
+    LaunchedEffect(targetCamera, reconnectTrigger) {
         if (targetCamera == null) {
             connectionStatus = "No paired camera found"
             AppLogger.w("ViewerMode", "No paired camera found in repository")
             return@LaunchedEffect
         }
+        if (isUserExited) return@LaunchedEffect
+
+        webRtcManager.closePeer(targetCamera.deviceId)
+        surfaceRenderer?.let { webRtcManager.attachRemoteRenderer(it) }
+        connectionStatus = "Connecting to camera..."
 
         val startTime = System.currentTimeMillis()
-        AppLogger.i("ViewerMode", "Starting WebRTC connection to camera: ${targetCamera.name} (${targetCamera.deviceId})")
+        AppLogger.i("ViewerMode", "Starting WebRTC connection to camera: ${targetCamera.name} (${targetCamera.deviceId}) (trigger=$reconnectTrigger)")
         val isMqttListening = signalingClient.startListening()
         AppLogger.i("ViewerMode", "Signaling client startListening completed (connected=$isMqttListening)")
 
         val remotePubKey = CryptoUtils.publicKeyFromBase64(targetCamera.publicKeyBase64)
         val sharedKey = CryptoUtils.deriveEcdhKey(securityRepo.getKeyPair().private, remotePubKey)
 
+        val localIceCandidates = java.util.Collections.synchronizedList(mutableListOf<IceCandidate>())
+
         val pc = webRtcManager.createPeerConnection(targetCamera.deviceId) { candidate ->
             val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
             AppLogger.d("ViewerMode", "Forwarding local ICE candidate to camera: mid=${candidate.sdpMid}, type=$typeMatch")
+            localIceCandidates.add(candidate)
             val iceMsg = SignalingMessage.IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)
             coroutineScope.launch {
                 val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
@@ -162,10 +190,18 @@ fun ViewerModeScreen(
                 if (pc.remoteDescription == null && offer != null) {
                     attempt++
                     val elapsed = System.currentTimeMillis() - startTime
-                    AppLogger.i("ViewerMode", "Waiting for camera answer (+${elapsed}ms); re-transmitting Offer (attempt #$attempt)...")
+                    val candidatesSnapshot = ArrayList(localIceCandidates)
+                    AppLogger.i("ViewerMode", "Waiting for camera answer (+${elapsed}ms); re-transmitting Offer (attempt #$attempt) and ${candidatesSnapshot.size} local ICE candidates...")
                     val offerMsg = SignalingMessage.Offer(offer.description)
                     val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
                     AppLogger.i("ViewerMode", "Re-transmitted Offer (attempt #$attempt, sent=$sent)")
+                    candidatesSnapshot.forEach { cand ->
+                        launch {
+                            val iceMsg = SignalingMessage.IceCandidate(cand.sdpMid, cand.sdpMLineIndex, cand.sdp)
+                            val candSent = signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
+                            AppLogger.d("ViewerMode", "Re-transmitted candidate to camera (success=$candSent, mid=${cand.sdpMid})")
+                        }
+                    }
                     if (attempt >= 15 && pc.connectionState() == PeerConnection.PeerConnectionState.NEW) {
                         connectionStatus = "Waiting for camera to respond..."
                     }
@@ -188,6 +224,18 @@ fun ViewerModeScreen(
                                 AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
                                 webRtcManager.drainRemoteIceCandidates(targetCamera.deviceId)
                                 connectionStatus = "Starting stream..."
+
+                                val candidatesSnapshot = ArrayList(localIceCandidates)
+                                AppLogger.i("ViewerMode", "Camera answered: transmitting ${candidatesSnapshot.size} local ICE candidates...")
+                                coroutineScope.launch {
+                                    candidatesSnapshot.forEach { cand ->
+                                        launch {
+                                            val iceMsg = SignalingMessage.IceCandidate(cand.sdpMid, cand.sdpMLineIndex, cand.sdp)
+                                            val candSent = signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
+                                            AppLogger.d("ViewerMode", "Sent candidate on answer to camera (success=$candSent, mid=${cand.sdpMid})")
+                                        }
+                                    }
+                                }
                             }
                             override fun onCreateSuccess(p0: SessionDescription?) {}
                             override fun onSetFailure(err: String?) { AppLogger.e("ViewerMode", "Failed setting remote answer: $err") }
@@ -249,6 +297,7 @@ fun ViewerModeScreen(
             when (state) {
                 PeerConnection.PeerConnectionState.CONNECTED -> {
                     connectionStatus = "Live (720p 20fps)"
+                    hasSymmetricNatError = false
                     targetCamera?.let { cam ->
                         coroutineScope.launch {
                             delay(500L)
@@ -266,9 +315,28 @@ fun ViewerModeScreen(
                 }
                 PeerConnection.PeerConnectionState.DISCONNECTED -> {
                     connectionStatus = "Disconnected"
-                    AppLogger.w("ViewerMode", "WebRTC connection disconnected")
+                    AppLogger.w("ViewerMode", "WebRTC connection disconnected, scheduling auto-reconnect in 3s")
+                    if (!isUserExited) {
+                        coroutineScope.launch {
+                            delay(3000L)
+                            if (!isUserExited && connectionStatus == "Disconnected") {
+                                AppLogger.i("ViewerMode", "Auto-reconnecting after disconnect...")
+                                reconnectTrigger++
+                            }
+                        }
+                    }
                 }
                 else -> {}
+            }
+        }
+    }
+
+    // Auto-reconnect when signaling reconnects after a network drop
+    LaunchedEffect(Unit) {
+        signalingClient.isConnectedFlow.collect { connected ->
+            if (connected && !isUserExited && (connectionStatus == "Disconnected" || connectionStatus == "Connection Failed")) {
+                AppLogger.i("ViewerMode", "Signaling restored, triggering camera reconnect")
+                reconnectTrigger++
             }
         }
     }
@@ -297,6 +365,10 @@ fun ViewerModeScreen(
                     surfaceRenderer = this
                     webRtcManager.attachRemoteRenderer(this)
                 }
+            },
+            update = { renderer ->
+                surfaceRenderer = renderer
+                webRtcManager.attachRemoteRenderer(renderer)
             },
             onRelease = { renderer ->
                 webRtcManager.detachRemoteRenderer(renderer)
@@ -335,8 +407,7 @@ fun ViewerModeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         IconButton(onClick = {
-                            webRtcManager.closeAll()
-                            onExitViewerMode()
+                            exitViewer()
                         }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Exit Viewer")
                         }
@@ -358,6 +429,16 @@ fun ViewerModeScreen(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (connectionStatus.startsWith("Live")) StatusLive else MaterialTheme.colorScheme.error
                                 )
+                                if (!connectionStatus.startsWith("Live") && !connectionStatus.startsWith("Connecting")) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    FilledTonalButton(
+                                        onClick = { reconnectTrigger++ },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(20.dp)
+                                    ) {
+                                        Text("Retry", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
                             }
                             Spacer(modifier = Modifier.height(2.dp))
                             Row(
@@ -556,6 +637,49 @@ fun ViewerModeScreen(
             }
         }
 
+        // Center Reconnect Overlay when Disconnected or Failed
+        if (connectionStatus == "Disconnected" || connectionStatus == "Connection Failed") {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(32.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = connectionStatus,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Camera connection lost. Auto-reconnecting or tap to retry now.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.LightGray,
+                        textAlign = TextAlign.Center
+                    )
+                    Button(
+                        onClick = { reconnectTrigger++ },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Reconnect Now")
+                    }
+                }
+            }
+        }
+
         // Symmetric NAT Error Dialog
         if (hasSymmetricNatError) {
             AlertDialog(
@@ -567,9 +691,17 @@ fun ViewerModeScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         hasSymmetricNatError = false
-                        onExitViewerMode()
+                        exitViewer()
                     }) {
                         Text("Exit")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        hasSymmetricNatError = false
+                        reconnectTrigger++
+                    }) {
+                        Text("Retry")
                     }
                 }
             )

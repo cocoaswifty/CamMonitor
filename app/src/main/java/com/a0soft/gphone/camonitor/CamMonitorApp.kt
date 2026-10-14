@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor
+package com.a0soft.gphone.camonitor
 
 import android.app.Application
 import android.app.NotificationChannel
@@ -42,7 +42,7 @@ class CamMonitorApp : Application() {
 
         timeProvider = DefaultTimeProvider()
         securityRepository = DefaultSecurityRepository(this, timeProvider)
-        signalingClient = MqttSignalingClient(securityRepository)
+        signalingClient = MqttSignalingClient(securityRepository, this)
         webRtcManager = WebRtcManager(this)
         torchManager = TorchManager(this)
 

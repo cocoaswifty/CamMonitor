@@ -38,6 +38,7 @@ class CameraMonitorService : Service() {
 
     private val binder = LocalBinder()
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
     private val _streamingState = MutableStateFlow(CameraStreamingState.IDLE)
     val streamingState: StateFlow<CameraStreamingState> = _streamingState.asStateFlow()
@@ -60,6 +61,7 @@ class CameraMonitorService : Service() {
         super.onCreate()
         AppLogger.i(tag, "CameraMonitorService created")
         acquireWakeLock()
+        acquireWifiLock()
         startForegroundServiceNotification()
     }
 
@@ -70,6 +72,23 @@ class CameraMonitorService : Service() {
             acquire(24 * 60 * 60 * 1000L) // 24 hours max safety
         }
         AppLogger.d(tag, "Partial WakeLock acquired")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun acquireWifiLock() {
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            wifiLock = wifiManager.createWifiLock(
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "CamMonitor:StreamingWifiLock"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            AppLogger.d(tag, "High-Perf WifiLock acquired")
+        } catch (e: Exception) {
+            AppLogger.w(tag, "Failed acquiring WifiLock: ${e.message}")
+        }
     }
 
     private fun startForegroundServiceNotification() {
@@ -88,15 +107,29 @@ class CameraMonitorService : Service() {
         }
     }
 
+    private fun updateNotification(contentText: String) {
+        val notification: Notification = NotificationCompat.Builder(this, CamMonitorApp.NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(getString(R.string.notification_title))
+            .setContentText(contentText)
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setOngoing(true)
+            .build()
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        manager.notify(1001, notification)
+    }
+
     fun startStreaming() {
         val app = CamMonitorApp.instance
         _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
+        updateNotification("Waiting for viewers to connect")
         app.webRtcManager.startCameraCapture()
 
         // Start listening to signaling
         serviceScope.launch {
-            app.signalingClient.startListening()
             observeSignaling(app)
+        }
+        serviceScope.launch {
+            app.signalingClient.startListening()
         }
 
         // Listen to DataChannel commands from viewers
@@ -111,11 +144,13 @@ class CameraMonitorService : Service() {
             app.webRtcManager.activeViewersCount.collect { count ->
                 if (count > 0) {
                     _streamingState.value = CameraStreamingState.STREAMING
+                    updateNotification("Streaming live to viewer")
                     cancelInactivityTimer()
                     startBatteryBroadcast()
                 } else if (_streamingState.value == CameraStreamingState.STREAMING ||
                     _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS) {
                     _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
+                    updateNotification("Waiting for viewers to connect")
                     stopBatteryBroadcast()
                     startInactivityTimer()
                 }
@@ -153,6 +188,7 @@ class CameraMonitorService : Service() {
             AppLogger.i(tag, "0 viewers for 60s: Stopping camera and pausing")
             CamMonitorApp.instance.webRtcManager.stopCameraCapture()
             _streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
+            updateNotification("Camera in standby (sensor paused to save power). Waiting for viewers...")
         }
     }
 
@@ -319,6 +355,16 @@ class CameraMonitorService : Service() {
         CamMonitorApp.instance.webRtcManager.closeAll()
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
+            wakeLock = null
+        }
+        if (wifiLock?.isHeld == true) {
+            wifiLock?.release()
+            wifiLock = null
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                CamMonitorApp.instance.signalingClient.stopListening()
+            } catch (_: Exception) {}
         }
     }
 }

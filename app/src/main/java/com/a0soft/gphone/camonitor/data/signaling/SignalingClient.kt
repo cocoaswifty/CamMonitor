@@ -1,5 +1,10 @@
 package com.a0soft.gphone.camonitor.data.signaling
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import com.a0soft.gphone.camonitor.data.model.SignalingEnvelope
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
@@ -28,7 +33,8 @@ interface SignalingClient {
 }
 
 class MqttSignalingClient(
-    private val securityRepository: SecurityRepository
+    private val securityRepository: SecurityRepository,
+    private val context: Context? = null
 ) : SignalingClient {
 
     private val tag = "MqttSignalingClient"
@@ -40,19 +46,50 @@ class MqttSignalingClient(
     private val _isConnectedFlow = MutableStateFlow(false)
     override val isConnectedFlow: StateFlow<Boolean> = _isConnectedFlow.asStateFlow()
 
-    private var client: Mqtt3AsyncClient? = null
-    private val connectMutex = kotlinx.coroutines.sync.Mutex()
+    private var activeClient: Mqtt3AsyncClient? = null
+    private var clientGeneration: Long = 0L
+    private var isListeningWanted: Boolean = false
+    private var reconnectJob: Job? = null
+    private val connectMutex = Mutex()
 
-    data class BrokerEndpoint(val host: String, val port: Int, val useSsl: Boolean)
+    companion object {
+        const val PRIMARY_BROKER_HOST = "broker.hivemq.com"
+        const val PRIMARY_BROKER_PORT = 1883
+    }
 
-    private val brokerEndpoints = listOf(
-        BrokerEndpoint("broker.hivemq.com", 1883, false),
-        BrokerEndpoint("broker.emqx.io", 1883, false),
-        BrokerEndpoint("broker.emqx.io", 8883, true)
-    )
+    init {
+        context?.let { ctx ->
+            try {
+                val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                val request = NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build()
+                cm?.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        AppLogger.i(tag, "Network available callback received")
+                        if (isListeningWanted && !_isConnectedFlow.value) {
+                            val deviceId = securityRepository.getDeviceId()
+                            val topic = "cammonitor/$deviceId/rx"
+                            reconnectJob?.cancel()
+                            triggerReconnectLoop(topic)
+                        }
+                    }
+
+                    override fun onLost(network: Network) {
+                        AppLogger.w(tag, "Network lost callback received")
+                        _isConnectedFlow.value = false
+                    }
+                })
+                AppLogger.d(tag, "Connectivity network callback registered successfully")
+            } catch (e: Exception) {
+                AppLogger.w(tag, "Unable to register network callback: ${e.message}")
+            }
+        }
+    }
 
     override suspend fun startListening(): Boolean {
-        if (_isConnectedFlow.value) {
+        isListeningWanted = true
+        if (_isConnectedFlow.value && activeClient?.state?.isConnected == true) {
             AppLogger.d(tag, "Already connected and listening")
             return true
         }
@@ -61,56 +98,79 @@ class MqttSignalingClient(
         val topic = "cammonitor/$deviceId/rx"
 
         AppLogger.i(tag, "Connecting to MQTT signaling for device: $deviceId, topic: $topic")
-        return connectWithRetry(topic)
+        val success = connectWithRetry(topic)
+        if (!success) {
+            triggerReconnectLoop(topic)
+        }
+        return success
     }
 
     private suspend fun connectWithRetry(topic: String): Boolean = connectMutex.withLock {
-        val currentClient = client
+        if (!isListeningWanted) return@withLock false
+        val currentClient = activeClient
         if (_isConnectedFlow.value && currentClient != null && currentClient.state.isConnected) return@withLock true
 
-        for (endpoint in brokerEndpoints) {
-            AppLogger.i(tag, "Attempting connection to ${endpoint.host}:${endpoint.port} (ssl=${endpoint.useSsl})...")
-            val success = try {
-                withTimeoutOrNull(15_000L) {
-                    attemptConnect(endpoint, topic)
-                } ?: false
-            } catch (e: Exception) {
-                AppLogger.w(tag, "Connection error for ${endpoint.host}:${endpoint.port}: ${e.message}")
-                false
-            }
+        try {
+            activeClient?.disconnect()
+        } catch (_: Exception) {}
+        activeClient = null
 
-            if (success) {
-                AppLogger.i(tag, "Successfully connected to ${endpoint.host}:${endpoint.port}")
-                return@withLock true
-            } else {
-                AppLogger.w(tag, "Failed or timed out on ${endpoint.host}:${endpoint.port}, trying fallback...")
-            }
+        val currentGen = ++clientGeneration
+        AppLogger.i(tag, "Attempting connection to $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (gen=$currentGen)...")
+
+        val success = try {
+            withTimeoutOrNull(10_000L) {
+                attemptConnect(PRIMARY_BROKER_HOST, PRIMARY_BROKER_PORT, false, topic, currentGen)
+            } ?: false
+        } catch (e: Exception) {
+            AppLogger.w(tag, "Connection error for $PRIMARY_BROKER_HOST: ${e.message}")
+            false
         }
 
-        _isConnectedFlow.value = false
-        return@withLock false
+        if (success) {
+            AppLogger.i(tag, "Successfully connected to $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (gen=$currentGen)")
+            _isConnectedFlow.value = true
+            return@withLock true
+        } else {
+            AppLogger.w(tag, "Connection attempt failed on $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT")
+            _isConnectedFlow.value = false
+            return@withLock false
+        }
     }
 
-    private suspend fun attemptConnect(endpoint: BrokerEndpoint, topic: String): Boolean {
+    private suspend fun attemptConnect(
+        host: String,
+        port: Int,
+        useSsl: Boolean,
+        topic: String,
+        generation: Long
+    ): Boolean {
         return suspendCancellableCoroutine { continuation ->
             val clientId = "cammonitor-" + UUID.randomUUID().toString().take(8)
 
             val builder = MqttClient.builder()
                 .useMqttVersion3()
                 .identifier(clientId)
-                .serverHost(endpoint.host)
-                .serverPort(endpoint.port)
-                .automaticReconnectWithDefaultConfig()
+                .serverHost(host)
+                .serverPort(port)
                 .addConnectedListener {
-                    AppLogger.i(tag, "MQTT connected to ${endpoint.host}:${endpoint.port}")
-                    _isConnectedFlow.value = true
+                    if (generation == clientGeneration) {
+                        AppLogger.i(tag, "MQTT connected callback (gen=$generation)")
+                        _isConnectedFlow.value = true
+                    }
                 }
                 .addDisconnectedListener { context ->
-                    AppLogger.w(tag, "MQTT disconnected from ${endpoint.host}:${endpoint.port}: ${context.cause.message}")
-                    _isConnectedFlow.value = false
+                    if (generation == clientGeneration) {
+                        AppLogger.w(tag, "MQTT disconnected (gen=$generation): ${context.cause.message}")
+                        _isConnectedFlow.value = false
+                        if (isListeningWanted) {
+                            val deviceId = securityRepository.getDeviceId()
+                            triggerReconnectLoop("cammonitor/$deviceId/rx")
+                        }
+                    }
                 }
 
-            val newClient = if (endpoint.useSsl) {
+            val newClient = if (useSsl) {
                 builder.sslWithDefaultConfig().buildAsync()
             } else {
                 builder.buildAsync()
@@ -133,11 +193,11 @@ class MqttSignalingClient(
                             return@whenComplete
                         }
                         if (connectError != null) {
-                            AppLogger.w(tag, "Failed connecting to ${endpoint.host}:${endpoint.port}: ${connectError.message}")
+                            AppLogger.w(tag, "Failed connecting to $host:$port (gen=$generation): ${connectError.message}")
                             try { newClient.disconnect() } catch (_: Exception) {}
                             continuation.resume(false)
                         } else {
-                            AppLogger.i(tag, "Connected to ${endpoint.host}:${endpoint.port}. Subscribing to $topic...")
+                            AppLogger.i(tag, "Connected to $host:$port. Subscribing to $topic (gen=$generation)...")
                             newClient.subscribeWith()
                                 .topicFilter(topic)
                                 .qos(MqttQos.AT_LEAST_ONCE)
@@ -152,13 +212,12 @@ class MqttSignalingClient(
                                         return@whenComplete
                                     }
                                     if (subError != null) {
-                                        AppLogger.e(tag, "Subscription failed on $topic", subError)
+                                        AppLogger.e(tag, "Subscription failed on $topic (gen=$generation)", subError)
                                         try { newClient.disconnect() } catch (_: Exception) {}
                                         continuation.resume(false)
                                     } else {
-                                        AppLogger.i(tag, "Subscribed successfully to $topic on ${endpoint.host}:${endpoint.port}")
-                                        client?.disconnect()
-                                        client = newClient
+                                        AppLogger.i(tag, "Subscribed successfully to $topic on $host:$port (gen=$generation)")
+                                        activeClient = newClient
                                         _isConnectedFlow.value = true
                                         continuation.resume(true)
                                     }
@@ -166,9 +225,29 @@ class MqttSignalingClient(
                         }
                     }
             } catch (e: Exception) {
-                AppLogger.e(tag, "Exception during connection attempt to ${endpoint.host}", e)
+                AppLogger.e(tag, "Exception during connection attempt to $host", e)
                 try { newClient.disconnect() } catch (_: Exception) {}
                 if (continuation.isActive) continuation.resume(false)
+            }
+        }
+    }
+
+    private fun triggerReconnectLoop(topic: String) {
+        if (!isListeningWanted) return
+        if (reconnectJob?.isActive == true) return
+        reconnectJob = scope.launch {
+            var delayMs = 2000L
+            while (isActive && isListeningWanted && !_isConnectedFlow.value) {
+                AppLogger.i(tag, "Scheduled reconnect in ${delayMs}ms (wanted=$isListeningWanted, connected=${_isConnectedFlow.value})...")
+                delay(delayMs)
+                if (!isActive || !isListeningWanted || _isConnectedFlow.value) break
+
+                val success = connectWithRetry(topic)
+                if (success) {
+                    AppLogger.i(tag, "Reconnection successfully restored signaling")
+                    break
+                }
+                delayMs = (delayMs * 2).coerceAtMost(15_000L)
             }
         }
     }
@@ -241,7 +320,7 @@ class MqttSignalingClient(
     }
 
     private suspend fun awaitConnection(timeoutMs: Long = 10_000L): Boolean {
-        val currentClient = client
+        val currentClient = activeClient
         if (_isConnectedFlow.value && currentClient != null && currentClient.state.isConnected) return true
         _isConnectedFlow.value = false
         AppLogger.i(tag, "awaitConnection: client is not connected, initiating connection...")
@@ -253,13 +332,17 @@ class MqttSignalingClient(
 
     override suspend fun sendEnvelope(envelope: SignalingEnvelope): Boolean {
         val startPublish = System.currentTimeMillis()
-        val connected = awaitConnection()
+        var connected = awaitConnection(7000L)
+        if (!connected) {
+            AppLogger.w(tag, "First awaitConnection attempt failed for ${envelope.recipientId}, retrying once...")
+            connected = awaitConnection(5000L)
+        }
         if (!connected) {
             AppLogger.e(tag, "Cannot send envelope to ${envelope.recipientId}: Signaling client not connected to broker")
             return false
         }
 
-        val currentClient = client
+        val currentClient = activeClient
         if (currentClient == null || !currentClient.state.isConnected) {
             AppLogger.e(tag, "Cannot send envelope to ${envelope.recipientId}: MQTT client is disconnected")
             _isConnectedFlow.value = false
@@ -307,10 +390,13 @@ class MqttSignalingClient(
     }
 
     override suspend fun stopListening() {
+        isListeningWanted = false
+        reconnectJob?.cancel()
+        reconnectJob = null
         connectMutex.withLock {
             try {
-                client?.disconnect()
-                client = null
+                activeClient?.disconnect()
+                activeClient = null
                 _isConnectedFlow.value = false
                 AppLogger.i(tag, "Disconnected from MQTT signaling")
             } catch (e: Exception) {

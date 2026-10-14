@@ -187,6 +187,10 @@ fun CameraModeScreen(
                         app.webRtcManager.attachLocalRenderer(this)
                     }
                 },
+                update = { renderer ->
+                    localSurfaceRenderer = renderer
+                    app.webRtcManager.attachLocalRenderer(renderer)
+                },
                 onRelease = { renderer ->
                     app.webRtcManager.detachLocalRenderer(renderer)
                     renderer.release()
@@ -381,7 +385,7 @@ private fun CameraPausedStandbyView(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "No viewers connected for 1 minute. Camera sensor stopped to preserve battery.",
+            text = "No viewers connected for 1 minute. Camera sensor stopped to preserve battery. Standby mode active — camera will automatically wake up when a viewer connects.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
