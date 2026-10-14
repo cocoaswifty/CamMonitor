@@ -96,14 +96,17 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Zero-Leakage Guarantee:** Unauthorized third parties cannot trigger camera activation, read SDP metadata, or inject malicious SDP offers.
 
 ### 2.4 Dynamic Device Renaming Synchronization
-* When a user renames PA while active:
+* When a user renames PA (either in Home Screen or while streaming):
   1. PA updates local persistent storage.
-  2. PA broadcasts an authenticated control command over all active WebRTC DataChannels:
+  2. If viewers are actively connected, PA broadcasts an authenticated control command over all active WebRTC DataChannels:
      ```json
      {"cmd": "RENAME", "name": "Baby Nursery Cam"}
      ```
-  3. Active PB viewers instantly update their top HUD title and local database record for this PA.
-  4. If PB is disconnected when PA is renamed, PA also sends the updated name in the initial WebRTC connection handshake metadata once PB reconnects.
+  3. Active PB viewers instantly update their top HUD title and local persistent database record for this PA.
+  4. If PB is disconnected (or hasn't connected yet) when PA is renamed:
+     * **Signaling Handshake Sync:** PA includes its current device name inside the encrypted WebRTC `ANSWER` signaling message (`{"type": "ANSWER", "sdp": "...", "cameraName": "..."}`). PB updates its local persistent store and HUD title immediately upon applying the Answer.
+     * **DataChannel Open Sync:** As soon as the WebRTC DataChannel transitions to `OPEN`, PA automatically dispatches a `RENAME` command carrying the latest camera name.
+     * **Query Status Sync:** Any incoming `QUERY_BATTERY` command from PB elicits both the latest battery status and a `RENAME` command with the latest camera name.
 
 ### 2.5 Media Stream & WebRTC Security
 * **DTLS-SRTP Fingerprint Verification:**

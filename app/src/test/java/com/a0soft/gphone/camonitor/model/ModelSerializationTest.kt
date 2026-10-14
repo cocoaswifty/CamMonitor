@@ -66,6 +66,18 @@ class ModelSerializationTest {
         val parsedReject = SignalingMessage.fromJson(reject.toJson())
         assertTrue(parsedReject is SignalingMessage.Reject)
         assertEquals("MAX_CAPACITY", (parsedReject as SignalingMessage.Reject).reason)
+
+        val answerWithoutName = SignalingMessage.Answer(sdp = "v=0\r\nsdp-content")
+        val parsedAnswerWithoutName = SignalingMessage.fromJson(answerWithoutName.toJson()) as? SignalingMessage.Answer
+        assertNotNull(parsedAnswerWithoutName)
+        assertEquals(answerWithoutName.sdp, parsedAnswerWithoutName?.sdp)
+        assertNull(parsedAnswerWithoutName?.cameraName)
+
+        val answerWithName = SignalingMessage.Answer(sdp = "v=0\r\nsdp-content", cameraName = "Kitchen Cam")
+        val parsedAnswerWithName = SignalingMessage.fromJson(answerWithName.toJson()) as? SignalingMessage.Answer
+        assertNotNull(parsedAnswerWithName)
+        assertEquals(answerWithName.sdp, parsedAnswerWithName?.sdp)
+        assertEquals("Kitchen Cam", parsedAnswerWithName?.cameraName)
     }
 
     @Test

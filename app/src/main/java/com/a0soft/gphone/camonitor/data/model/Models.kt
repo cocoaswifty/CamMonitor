@@ -138,7 +138,8 @@ sealed class SignalingMessage {
     ) : SignalingMessage()
 
     data class Answer(
-        val sdp: String
+        val sdp: String,
+        val cameraName: String? = null
     ) : SignalingMessage()
 
     data class IceCandidate(
@@ -173,6 +174,7 @@ sealed class SignalingMessage {
             is Answer -> {
                 json.put("type", "ANSWER")
                 json.put("sdp", sdp)
+                cameraName?.let { json.put("cameraName", it) }
             }
             is IceCandidate -> {
                 json.put("type", "ICE_CANDIDATE")
@@ -204,7 +206,10 @@ sealed class SignalingMessage {
                         paPublicKeyBase64 = json.getString("paPublicKeyBase64")
                     )
                     "OFFER" -> Offer(sdp = json.getString("sdp"))
-                    "ANSWER" -> Answer(sdp = json.getString("sdp"))
+                    "ANSWER" -> Answer(
+                        sdp = json.getString("sdp"),
+                        cameraName = json.optString("cameraName").takeIf { it.isNotEmpty() }
+                    )
                     "ICE_CANDIDATE" -> IceCandidate(
                         sdpMid = json.getString("sdpMid"),
                         sdpMLineIndex = json.getInt("sdpMLineIndex"),

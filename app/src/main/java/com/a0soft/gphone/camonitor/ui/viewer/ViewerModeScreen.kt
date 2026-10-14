@@ -239,6 +239,12 @@ fun ViewerModeScreen(
                     is SignalingMessage.Answer -> {
                         val elapsed = System.currentTimeMillis() - startTime
                         AppLogger.i("ViewerMode", "Received remote Answer from camera (+${elapsed}ms, SDP size=${msg.sdp.length} chars). Applying to PeerConnection...")
+                        msg.cameraName?.let { newName ->
+                            cameraName = newName
+                            val existing = securityRepo.getPairedDevice(targetCamera.deviceId) ?: targetCamera
+                            securityRepo.addPairedDevice(existing.copy(name = newName))
+                            AppLogger.i("ViewerMode", "Updated paired camera name from Answer to: $newName")
+                        }
                         retryJob.cancel()
                         val answerDesc = SessionDescription(SessionDescription.Type.ANSWER, msg.sdp)
                         pc.setRemoteDescription(object : SdpObserver {
@@ -290,8 +296,10 @@ fun ViewerModeScreen(
                 is ControlCommand.Rename -> {
                     cameraName = cmd.name
                     // Update local storage
-                    if (targetCamera != null) {
-                        securityRepo.addPairedDevice(targetCamera.copy(name = cmd.name))
+                    val existing = securityRepo.getPairedDevice(peerId) ?: targetCamera
+                    if (existing != null) {
+                        securityRepo.addPairedDevice(existing.copy(name = cmd.name))
+                        AppLogger.i("ViewerMode", "Updated paired camera name from DataChannel to: ${cmd.name}")
                     }
                 }
                 is ControlCommand.Battery -> {

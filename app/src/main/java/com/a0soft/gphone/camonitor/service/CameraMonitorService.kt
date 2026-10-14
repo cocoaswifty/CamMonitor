@@ -282,7 +282,10 @@ class CameraMonitorService : Service() {
                             override fun onSetSuccess() {
                                 val setLocalElapsed = System.currentTimeMillis() - startTime
                                 AppLogger.i(tag, "Local Answer set successfully (+${setLocalElapsed}ms), transmitting Answer to $senderId")
-                                val answerMsg = SignalingMessage.Answer(answerDesc.description)
+                                val answerMsg = SignalingMessage.Answer(
+                                    sdp = answerDesc.description,
+                                    cameraName = app.securityRepository.getDeviceName()
+                                )
                                 sendSignalingMessageToViewer(senderId, answerMsg)
                             }
                             override fun onCreateSuccess(desc: SessionDescription?) {}
@@ -347,6 +350,10 @@ class CameraMonitorService : Service() {
                         ControlCommand.Battery(bInfo.percentage, bInfo.isCharging)
                     )
                 }
+                val currentName = app.securityRepository.getDeviceName()
+                app.webRtcManager.broadcastDataChannelCommand(
+                    ControlCommand.Rename(currentName)
+                )
             }
         }
     }

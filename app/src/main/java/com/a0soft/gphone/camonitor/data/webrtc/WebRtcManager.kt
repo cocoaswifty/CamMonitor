@@ -355,13 +355,30 @@ class WebRtcManager(private val context: Context) {
 
     private fun setupDataChannel(peerId: String, dc: DataChannel) {
         dataChannels[peerId] = dc
-        fun sendBatteryIfOpen() {
+        fun sendInitialStatusIfOpen() {
             if (dc.state() == DataChannel.State.OPEN) {
-                val bInfo = com.a0soft.gphone.camonitor.ui.common.BatteryHelper.getBatteryInfo(context)
-                if (bInfo.percentage >= 0) {
-                    val cmd = ControlCommand.Battery(bInfo.percentage, bInfo.isCharging)
-                    val bytes = cmd.toJson().toByteArray(Charsets.UTF_8)
-                    dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), false))
+                val isCamera = localVideoTrack != null
+                if (isCamera) {
+                    try {
+                        val currentName = com.a0soft.gphone.camonitor.CamMonitorApp.instance.securityRepository.getDeviceName()
+                        val renameCmd = ControlCommand.Rename(currentName)
+                        val renameBytes = renameCmd.toJson().toByteArray(Charsets.UTF_8)
+                        dc.send(DataChannel.Buffer(ByteBuffer.wrap(renameBytes), false))
+                        AppLogger.i(tag, "Sent initial Rename command on DataChannel open to $peerId: $currentName")
+                    } catch (e: Exception) {
+                        AppLogger.e(tag, "Failed to send initial Rename command", e)
+                    }
+
+                    try {
+                        val bInfo = com.a0soft.gphone.camonitor.ui.common.BatteryHelper.getBatteryInfo(context)
+                        if (bInfo.percentage >= 0) {
+                            val cmd = ControlCommand.Battery(bInfo.percentage, bInfo.isCharging)
+                            val bytes = cmd.toJson().toByteArray(Charsets.UTF_8)
+                            dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), false))
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e(tag, "Failed to send initial Battery command", e)
+                    }
                 }
             }
         }
@@ -371,7 +388,7 @@ class WebRtcManager(private val context: Context) {
 
             override fun onStateChange() {
                 AppLogger.i(tag, "DataChannel state for $peerId: ${dc.state()}")
-                sendBatteryIfOpen()
+                sendInitialStatusIfOpen()
             }
 
             override fun onMessage(buffer: DataChannel.Buffer) {
@@ -385,7 +402,7 @@ class WebRtcManager(private val context: Context) {
                 }
             }
         })
-        sendBatteryIfOpen()
+        sendInitialStatusIfOpen()
     }
 
     fun createDataChannelForSender(peerId: String): DataChannel? {
