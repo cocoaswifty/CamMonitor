@@ -274,9 +274,14 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 ### 5.4 Screen 4: Viewer Mode (PB - Receiver)
 
 #### 5.4.1 Video Player Surface
-* **Viewport:** Full-screen WebRTC `SurfaceViewRenderer` wrapped in `AndroidView`.
-* **Rotation Handling:** The view or video frame is dynamically rotated ($0^\circ \to 90^\circ \to 180^\circ \to 270^\circ$) based on `uiState.rotationDegrees`.
+* **Viewport:** Responsive `BoxWithConstraints` container hosting WebRTC `SurfaceViewRenderer` wrapped in `AndroidView`.
+* **Dynamic Aspect-Ratio Fitting (No Cropping):**
+  * Incoming frame dimensions and orientation are observed dynamically via WebRTC `RendererCommon.RendererEvents.onFrameResolutionChanged(width, height, rotation)`.
+  * **Aspect Fit (Default):** The surface view layout dimensions are constrained to match the incoming video's exact aspect ratio inside the screen bounds. If orientation mismatches occur (PA in landscape and PB in portrait, or PA in portrait and PB in landscape), the video is letterboxed or pillarboxed with clean black borders so that 100% of the camera field of view is visible without cropping.
+  * **Aspect Fill Toggle:** Tapping the Fit/Fill toggle button or double-tapping the video surface toggles between Aspect Fit (full uncropped frame) and Aspect Fill (zoomed to fill entire screen).
+* **Rotation Handling:** The view or video frame is dynamically rotated ($0^\circ \to 90^\circ \to 180^\circ \to 270^\circ$) based on `uiState.rotationDegrees`. When rotated $90^\circ$ or $270^\circ$, dimensions are swapped and adjusted to guarantee that the rotated frame fits entirely within the screen viewport without clipping.
 * **Touch to Toggle Controls:** Single tap on video toggles overlay HUD visibility (auto-hides after 5s of inactivity).
+* **Double Tap Gesture:** Double tapping the video viewport toggles between Aspect Fit and Aspect Fill modes.
 
 #### 5.4.2 Top Overlay HUD
 * **Left:** `IconButton(Icons.Default.ArrowBack)` $\to$ `"Exit Viewer Mode"`.
@@ -299,12 +304,15 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   1. **Rotate 90° Button (`FilledTonalIconButton`):**
      * Icon: `Icons.Default.Rotate90DegreesCw`.
      * Tapping increments rotation: $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.
-  2. **Push-to-Talk (PTT) Intercom Button (Center, Prominent Pill):**
+  2. **Aspect Ratio Toggle Button (`FilledTonalIconButton`):**
+     * Icon: `Icons.Default.Fullscreen` (when in Fit mode) / `Icons.Default.FitScreen` (when in Fill mode).
+     * Toggles between **Aspect Fit** (entire uncropped camera frame visible with letterboxing/pillarboxing) and **Aspect Fill** (zooms to fill entire screen).
+  3. **Push-to-Talk (PTT) Intercom Button (Center, Prominent Pill):**
      * Design: Large capsule button (`Button` with `shape = CircleShape`).
      * Normal state: Mic icon + `"Hold to Talk"`. Container color: `SecondaryContainer`.
      * Pressed state: Active soundwave animation + `"Transmitting..."`. Container color: `Primary` (pulsing).
      * Gesture: Managed via `Modifier.pointerInput` detecting press-down (`PTT_START`) and release/cancel (`PTT_STOP`).
-  3. **Audio Playback Button (`FilledTonalIconToggleButton`):**
+  4. **Audio Playback Button (`FilledTonalIconToggleButton`):**
      * Icon: `VolumeUp` (active / playing) / `VolumeOff` (inactive / muted). Toggles incoming PA audio playback.
      * Default State: **OFF (Muted)** upon initial launch to prevent acoustic feedback / howling when devices are co-located in the same room.
      * Persistence: The audio playback state is persistently saved in secure preferences (`viewer_audio_playback_enabled`) and restored automatically across app sessions. WebRTC incoming audio track enabled state is synchronized immediately on connection.

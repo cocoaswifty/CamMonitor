@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -55,6 +56,8 @@ fun ViewerModeScreen(
     var cameraName by remember { mutableStateOf(targetCamera?.name ?: "Camera") }
     var connectionStatus by remember { mutableStateOf("Connecting to camera...") }
     var rotationDegrees by remember { mutableStateOf(0f) }
+    var isAspectFit by remember { mutableStateOf(true) }
+    var videoAspectRatio by remember { mutableStateOf<Float?>(null) }
     var isControlsVisible by remember { mutableStateOf(true) }
     var isAudioEnabled by remember { mutableStateOf(securityRepo.isViewerAudioPlaybackEnabled()) }
     var isTorchActive by remember { mutableStateOf(false) }
@@ -341,17 +344,48 @@ fun ViewerModeScreen(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .clipToBounds()
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { isControlsVisible = !isControlsVisible }
+                    onTap = { isControlsVisible = !isControlsVisible },
+                    onDoubleTap = { isAspectFit = !isAspectFit }
                 )
-            }
+            },
+        contentAlignment = Alignment.Center
     ) {
-        // Video Viewport with rotation support
+        val containerWidth = maxWidth
+        val containerHeight = maxHeight
+        val aspect = videoAspectRatio ?: (16f / 9f)
+
+        val isSwapped = (rotationDegrees.toInt() % 180 != 0)
+        val effectiveAspect = if (isSwapped) (1f / aspect) else aspect
+        val containerAspect = containerWidth / containerHeight
+
+        val (wVis, hVis) = if (isAspectFit) {
+            if (effectiveAspect > containerAspect) {
+                Pair(containerWidth, containerWidth / effectiveAspect)
+            } else {
+                Pair(containerHeight * effectiveAspect, containerHeight)
+            }
+        } else {
+            if (effectiveAspect > containerAspect) {
+                Pair(containerHeight * effectiveAspect, containerHeight)
+            } else {
+                Pair(containerWidth, containerWidth / effectiveAspect)
+            }
+        }
+
+        val (viewWidth, viewHeight) = if (isSwapped) {
+            Pair(hVis, wVis)
+        } else {
+            Pair(wVis, hVis)
+        }
+
+        // Video Viewport with dynamic aspect-ratio and rotation support
         AndroidView(
             factory = { ctx ->
                 SurfaceViewRenderer(ctx).apply {
@@ -359,7 +393,23 @@ fun ViewerModeScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    init(webRtcManager.eglBase.eglBaseContext, null)
+                    init(webRtcManager.eglBase.eglBaseContext, object : RendererCommon.RendererEvents {
+                        override fun onFirstFrameRendered() {
+                            AppLogger.d("ViewerMode", "First remote frame rendered")
+                        }
+
+                        override fun onFrameResolutionChanged(vw: Int, vh: Int, rot: Int) {
+                            AppLogger.i("ViewerMode", "Remote frame resolution changed: ${vw}x${vh}, rot=$rot")
+                            val rw = if (rot == 90 || rot == 270) vh else vw
+                            val rh = if (rot == 90 || rot == 270) vw else vh
+                            if (rw > 0 && rh > 0) {
+                                val newAspect = rw.toFloat() / rh.toFloat()
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    videoAspectRatio = newAspect
+                                }
+                            }
+                        }
+                    })
                     setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
                     setEnableHardwareScaler(true)
                     surfaceRenderer = this
@@ -369,6 +419,10 @@ fun ViewerModeScreen(
             update = { renderer ->
                 surfaceRenderer = renderer
                 webRtcManager.attachRemoteRenderer(renderer)
+                renderer.setScalingType(
+                    if (isAspectFit) RendererCommon.ScalingType.SCALE_ASPECT_FIT
+                    else RendererCommon.ScalingType.SCALE_ASPECT_FILL
+                )
             },
             onRelease = { renderer ->
                 webRtcManager.detachRemoteRenderer(renderer)
@@ -376,7 +430,7 @@ fun ViewerModeScreen(
                 surfaceRenderer = null
             },
             modifier = Modifier
-                .fillMaxSize()
+                .size(viewWidth, viewHeight)
                 .graphicsLayer { rotationZ = rotationDegrees }
         )
 
@@ -514,9 +568,25 @@ fun ViewerModeScreen(
                 ) {
                     // Rotate 90 Degrees Button
                     FilledTonalIconButton(
-                        onClick = { rotationDegrees = (rotationDegrees + 90f) % 360f }
+                        onClick = {
+                            rotationDegrees = (rotationDegrees + 90f) % 360f
+                            AppLogger.i("ViewerMode", "Rotate button clicked: new rotationDegrees=$rotationDegrees")
+                        }
                     ) {
                         Icon(Icons.Default.Rotate90DegreesCw, contentDescription = "Rotate")
+                    }
+
+                    // Aspect Ratio (Fit / Fill) Toggle Button
+                    FilledTonalIconButton(
+                        onClick = {
+                            isAspectFit = !isAspectFit
+                            AppLogger.i("ViewerMode", "Aspect Fit/Fill toggle clicked: isAspectFit=$isAspectFit")
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isAspectFit) Icons.Default.Fullscreen else Icons.Default.FitScreen,
+                            contentDescription = if (isAspectFit) "Fill Screen" else "Fit to Screen"
+                        )
                     }
 
                     // Push-to-Talk Button
