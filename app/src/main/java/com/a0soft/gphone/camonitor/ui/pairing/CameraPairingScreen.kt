@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.ui.pairing
+package com.a0soft.gphone.camonitor.ui.pairing
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -17,6 +17,7 @@ import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import com.a0soft.gphone.camonitor.data.model.PairingPayload
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
+import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.QrUtils
 import kotlinx.coroutines.delay
@@ -73,9 +74,10 @@ fun CameraPairingScreen(
                     deviceId = msg.pbDeviceId,
                     name = msg.pbName,
                     publicKeyBase64 = msg.pbPublicKeyBase64,
-                    pairedTimestamp = System.currentTimeMillis()
+                    pairedTimestamp = System.currentTimeMillis(),
+                    role = "VIEWER"
                 )
-                val added = securityRepo.addPairedDevice(newViewer)
+                val added = securityRepo.addPairedDevice(newViewer, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS)
                 if (added) {
                     // Send PAIR_CONFIRM
                     val confirm = SignalingMessage.PairConfirm(
@@ -169,7 +171,7 @@ fun CameraPairingScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            val currentCount = securityRepo.getPairedDevices().size
+            val currentCount = securityRepo.getPairedViewers().size
             Text(
                 text = "Slot ${currentCount + 1} of 2 Available",
                 style = MaterialTheme.typography.labelLarge,

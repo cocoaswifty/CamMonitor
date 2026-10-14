@@ -46,10 +46,15 @@ sequenceDiagram
    * Each device generates an asymmetric **ECDSA (secp256r1 / NIST P-256)** keypair stored in the **Android Keystore** (`AndroidKeyStore` provider).
    * Private keys are hardware-backed (TEE/StrongBox) and never exportable in plaintext.
 2. **Key Storage & Whitelisting:**
-   * PA maintains an **Authorized Viewer Whitelist** (maximum 2 devices) containing:
+   * **Camera (PA):** Maintains an **Authorized Viewer Whitelist** (maximum 2 devices) containing:
      * `viewerDeviceId`: String (UUID v4)
      * `viewerPublicKey`: String (Base64 X.509 encoded public key)
      * `deviceAlias`: String (e.g., "Dad's Pixel 8")
+     * `pairedTimestamp`: Long
+   * **Viewer (PB):** Can pair with up to **8 Camera devices** (`MAX_PAIRED_CAMERAS = 8`) containing:
+     * `cameraDeviceId`: String (UUID v4)
+     * `cameraPublicKey`: String (Base64 X.509 encoded public key)
+     * `cameraAlias`: String (e.g., "Living Room Cam")
      * `pairedTimestamp`: Long
    * Whitelist and local device name are persisted in Android `EncryptedSharedPreferences` backed by `MasterKey`.
 
@@ -108,11 +113,13 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Remote commands (`TORCH`, `PTT`, `RENAME`, `BATTERY`, `QUERY_BATTERY`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
 
 ### 2.6 Revocation & Unpairing
-* PA provides a "Manage Paired Devices" screen.
-* When a user removes a viewer:
-  1. PB's public key is wiped from the Whitelist.
-  2. Any active WebRTC `PeerConnection` with that viewer is immediately terminated.
-  3. Subsequent signaling messages from that viewer fail the whitelist check and are dropped.
+* Both devices provide device unpairing options:
+  * Via the dedicated **"Manage Paired Devices"** screen.
+  * PB also allows quick unpairing directly within the **Camera Selection Dialog**.
+* When a user removes a paired device:
+  1. The target device's key and metadata are wiped from persistent storage.
+  2. Any active WebRTC `PeerConnection` with that device is immediately terminated.
+  3. Subsequent signaling messages from that device fail authentication/whitelist checks and are dropped.
 
 ---
 
@@ -190,15 +197,42 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   1. **Camera Mode Card:**
      * Icon: `Icons.Default.Videocam` (48dp, Primary color tint).
      * Title: `"Start Camera Mode"` (TitleLarge).
-     * Subtitle: `"Turn this device into a camera monitor sender"` (BodyMedium, subtle gray).
-     * Current Camera Name Pill: e.g. `"Name: Living Room Cam"` with edit pencil icon button.
-     * Click Action: Navigates to Camera Mode flow.
+     * Subtitle: Dynamic status:
+       * 0 paired viewers: `"No viewers paired (tap to pair)"`.
+       * 1 paired viewer: `"Paired with <Viewer Name>"`.
+       * 2 paired viewers: `"2 viewers paired (broadcasting ready)"`.
+     * Current Camera Name Pill: e.g. `"Camera Name: Living Room Cam"` with edit pencil icon button.
+     * Paired Viewers Summary Row:
+       * Label: `"Paired Viewers (<count>/2)"`.
+       * Action: `"+ Pair Viewer"` button (visible if count $< 2$) $\to$ Launches QR code display.
+     * Click Action:
+       * If 0 viewers: Navigates to Screen 5.2.1 (Camera Pairing QR Display).
+       * If $\ge 1$ viewers: Directly starts Camera Mode streaming.
   2. **Viewer Mode Card:**
      * Icon: `Icons.Default.Visibility` (48dp, Secondary color tint).
      * Title: `"Start Viewer Mode"` (TitleLarge).
-     * Subtitle: `"Watch live video stream from a paired camera"` (BodyMedium, subtle gray).
-     * Trailing: Forward arrow indicator.
-     * Click Action: Navigates to Viewer Mode flow.
+     * Subtitle: Dynamic status:
+       * 0 paired cameras: `"No paired camera (tap to pair)"`.
+       * 1 paired camera: `"Paired with <Camera Name>"`.
+       * $>1$ paired cameras: `"<N> cameras paired (tap to choose)"`.
+     * Paired Cameras Summary Row:
+       * Label: `"Paired Cameras (<count>/8)"`.
+       * Action: `"+ Pair Camera"` button (visible if count $< 8$).
+     * Click Action:
+       * If 0 cameras: Navigates to Screen 5.2.2 (Viewer Pairing QR Scanner).
+       * If 1 camera: Directly launches Viewer Mode targeting that camera.
+       * If $>1$ cameras: Opens **Camera Selection Dialog**.
+* **Camera Selection Dialog (Compose AlertDialog):**
+  * Trigger: Tapping Viewer Mode Card when multiple cameras ($>1$) are paired.
+  * Title: `"Select Camera to View"`.
+  * Subtitle: `"Choose which camera stream to view:"`.
+  * Camera List (`LazyColumn`):
+    * Displays each paired camera with `Icons.Default.Videocam`, camera name, truncated ID snippet, connect arrow, and a quick-remove red trash icon (`Icons.Default.Delete`).
+    * Tapping any camera immediately launches Viewer Mode connecting to that camera.
+    * Tapping trash icon immediately unpairs the camera.
+  * Bottom Action:
+    * `"Pair Another Camera (<count>/8)"` button (visible if count $< 8$) to launch QR scanner.
+  * Dismiss Action: `[Cancel]`.
 * **Camera Name Edit Dialog (Compose AlertDialog):**
   * Trigger: Tapping the edit pencil on Camera Mode card or inside Camera Mode settings.
   * Title: `"Rename Camera"`
@@ -341,16 +375,19 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 ### 5.5 Screen 5: Manage Paired Devices Screen
 * **Top Bar:** Title `"Paired Devices"`, Back button.
 * **Device List:**
-  * Displays paired cards (up to 2):
-    * Device alias and ID snippet (e.g., `Dad's Phone (PB) • Paired Oct 12`).
-    * Trailing `IconButton(Icons.Default.DeleteOutline)` with red tint.
+  * Displays paired cards (up to 8 cameras or 2 viewers):
+    * Device alias and ID snippet (e.g., `Living Room Cam • Paired Oct 14 • ID: 7fc9ef3e...`).
+    * Trailing `IconButton(Icons.Default.Delete)` with red tint.
 * **Delete Confirmation Dialog:**
   * Dialog: `"Revoke Device Access?"`
-  * Text: `"This viewer will immediately be disconnected and unable to reconnect without scanning a new QR code."`
+  * Text: `"Are you sure you want to revoke '<name>'? It will immediately lose connection access."`
   * Confirm button: `"Revoke"` (destructive red).
-* **Pair New Viewer Button:**
-  * Visible only if paired count $< 2$.
-  * Launches Screen 5.2.1 (PA Pairing QR code).
+* **Pair New Device Floating Action Button (FAB):**
+  * Visible when paired count is under limit ($< 8$ cameras or $< 2$ viewers).
+  * If both pairing modes available, displays a selection dialog:
+    * `"Pair Camera (as Viewer)"` $\to$ Launches QR Scanner (PB flow, up to 8 cameras).
+    * `"Pair Viewer (as Camera)"` $\to$ Launches QR Code Display (PA flow, up to 2 viewers).
+  * If only one mode is under limit, directly launches that pairing flow.
 
 ---
 

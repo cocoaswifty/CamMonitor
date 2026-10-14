@@ -26,8 +26,15 @@ interface SecurityRepository {
     fun clearPairingOtp()
 
     // Whitelist
+    companion object {
+        const val MAX_PAIRED_CAMERAS = 8
+        const val MAX_PAIRED_VIEWERS = 2
+    }
+
     fun getPairedDevices(): List<PairedDevice>
-    fun addPairedDevice(device: PairedDevice): Boolean
+    fun getPairedCameras(): List<PairedDevice> = getPairedDevices().filter { it.role != "VIEWER" }
+    fun getPairedViewers(): List<PairedDevice> = getPairedDevices().filter { it.role != "CAMERA" }
+    fun addPairedDevice(device: PairedDevice, maxLimit: Int = MAX_PAIRED_CAMERAS): Boolean
     fun removePairedDevice(deviceId: String)
     fun isDeviceWhitelisted(deviceId: String): Boolean
     fun getPairedDevice(deviceId: String): PairedDevice?
@@ -190,10 +197,10 @@ class DefaultSecurityRepository(
         return list
     }
 
-    override fun addPairedDevice(device: PairedDevice): Boolean {
+    override fun addPairedDevice(device: PairedDevice, maxLimit: Int): Boolean {
         val current = getPairedDevices().toMutableList()
-        if (current.size >= 2 && current.none { it.deviceId == device.deviceId }) {
-            AppLogger.w("SecurityRepository", "Cannot add viewer: Max 2 viewers allowed")
+        if (current.size >= maxLimit && current.none { it.deviceId == device.deviceId }) {
+            AppLogger.w("SecurityRepository", "Cannot add paired device: Max $maxLimit devices reached")
             return false
         }
         current.removeAll { it.deviceId == device.deviceId }
@@ -201,7 +208,7 @@ class DefaultSecurityRepository(
 
         savePairedDevices(current)
         clearPairingOtp()
-        AppLogger.i("SecurityRepository", "Paired new device: ${device.name} (${device.deviceId})")
+        AppLogger.i("SecurityRepository", "Paired new device: ${device.name} (${device.deviceId}) [count=${current.size}/$maxLimit]")
         return true
     }
 

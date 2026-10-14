@@ -42,7 +42,8 @@ import org.webrtc.*
 
 @Composable
 fun ViewerModeScreen(
-    onExitViewerMode: () -> Unit
+    onExitViewerMode: () -> Unit,
+    selectedDeviceId: String? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
     val app = remember { CamMonitorApp.instance }
@@ -51,7 +52,13 @@ fun ViewerModeScreen(
     val webRtcManager = app.webRtcManager
 
     val pairedDevices = remember { securityRepo.getPairedDevices() }
-    val targetCamera = pairedDevices.firstOrNull()
+    val targetCamera = remember(selectedDeviceId) {
+        if (selectedDeviceId != null) {
+            securityRepo.getPairedDevice(selectedDeviceId) ?: pairedDevices.firstOrNull()
+        } else {
+            pairedDevices.firstOrNull()
+        }
+    }
 
     var cameraName by remember { mutableStateOf(targetCamera?.name ?: "Camera") }
     var connectionStatus by remember { mutableStateOf("Connecting to camera...") }

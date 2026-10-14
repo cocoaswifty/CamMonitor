@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.ui.pairing
+package com.a0soft.gphone.camonitor.ui.pairing
 
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
@@ -46,7 +46,7 @@ import java.util.concurrent.Executors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerPairingScreen(
-    onPairingSuccess: () -> Unit,
+    onPairingSuccess: (String) -> Unit,
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
@@ -233,7 +233,7 @@ private suspend fun handleScannedQr(
     app: CamMonitorApp,
     securityRepo: com.a0soft.gphone.camonitor.data.security.SecurityRepository,
     signalingClient: com.a0soft.gphone.camonitor.data.signaling.SignalingClient,
-    onSuccess: () -> Unit,
+    onSuccess: (String) -> Unit,
     onRetry: () -> Unit,
     updateStatus: (String) -> Unit
 ) {
@@ -295,12 +295,13 @@ private suspend fun handleScannedQr(
                         deviceId = msg.paDeviceId,
                         name = msg.paName,
                         publicKeyBase64 = msg.paPublicKeyBase64,
-                        pairedTimestamp = System.currentTimeMillis()
+                        pairedTimestamp = System.currentTimeMillis(),
+                        role = "CAMERA"
                     )
-                    securityRepo.addPairedDevice(pairedCam)
+                    securityRepo.addPairedDevice(pairedCam, maxLimit = com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_PAIRED_CAMERAS)
                     updateStatus("Pairing successful! Starting viewer...")
                     delay(300L)
-                    onSuccess()
+                    onSuccess(msg.paDeviceId)
                     return@collect
                 }
             }

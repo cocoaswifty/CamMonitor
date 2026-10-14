@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
         val backStack = remember { mutableStateListOf(AppScreen.HOME) }
         val currentScreen = backStack.lastOrNull() ?: AppScreen.HOME
         val securityRepo = remember { CamMonitorApp.instance.securityRepository }
+        var selectedCameraDeviceId by remember { mutableStateOf<String?>(null) }
 
         fun navigateTo(screen: AppScreen) {
             backStack.add(screen)
@@ -105,20 +106,22 @@ class MainActivity : ComponentActivity() {
             AppScreen.HOME -> {
                 HomeScreen(
                     onStartCameraMode = {
-                        val pairedCount = securityRepo.getPairedDevices().size
-                        if (pairedCount == 0) {
+                        val viewerCount = securityRepo.getPairedViewers().size
+                        if (viewerCount == 0) {
                             navigateTo(AppScreen.CAMERA_PAIRING)
                         } else {
                             navigateTo(AppScreen.CAMERA_MODE)
                         }
                     },
-                    onStartViewerMode = {
-                        val pairedCount = securityRepo.getPairedDevices().size
-                        if (pairedCount == 0) {
-                            navigateTo(AppScreen.VIEWER_PAIRING)
-                        } else {
-                            navigateTo(AppScreen.VIEWER_MODE)
-                        }
+                    onPairNewViewer = {
+                        navigateTo(AppScreen.CAMERA_PAIRING)
+                    },
+                    onStartViewerMode = { deviceId ->
+                        selectedCameraDeviceId = deviceId
+                        navigateTo(AppScreen.VIEWER_MODE)
+                    },
+                    onPairNewCamera = {
+                        navigateTo(AppScreen.VIEWER_PAIRING)
                     },
                     onOpenPairedDevices = { navigateTo(AppScreen.MANAGE_DEVICES) },
                     onOpenLogs = { navigateTo(AppScreen.LOGS) }
@@ -140,7 +143,8 @@ class MainActivity : ComponentActivity() {
             }
             AppScreen.VIEWER_PAIRING -> {
                 ViewerPairingScreen(
-                    onPairingSuccess = {
+                    onPairingSuccess = { pairedCamId ->
+                        selectedCameraDeviceId = pairedCamId
                         if (backStack.isNotEmpty()) backStack.removeAt(backStack.size - 1)
                         backStack.add(AppScreen.VIEWER_MODE)
                     },
@@ -149,12 +153,14 @@ class MainActivity : ComponentActivity() {
             }
             AppScreen.VIEWER_MODE -> {
                 ViewerModeScreen(
+                    selectedDeviceId = selectedCameraDeviceId,
                     onExitViewerMode = { navigateBack() }
                 )
             }
             AppScreen.MANAGE_DEVICES -> {
                 ManageDevicesScreen(
                     onPairNewViewer = { navigateTo(AppScreen.CAMERA_PAIRING) },
+                    onPairNewCamera = { navigateTo(AppScreen.VIEWER_PAIRING) },
                     onBack = { navigateBack() }
                 )
             }

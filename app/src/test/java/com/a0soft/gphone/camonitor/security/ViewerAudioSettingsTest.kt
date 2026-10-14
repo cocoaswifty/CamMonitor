@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.security
+package com.a0soft.gphone.camonitor.security
 
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import com.a0soft.gphone.camonitor.data.model.SignalingEnvelope
@@ -26,7 +26,7 @@ class TestSecurityRepository : SecurityRepository {
     override fun clearPairingOtp() {}
 
     override fun getPairedDevices(): List<PairedDevice> = emptyList()
-    override fun addPairedDevice(device: PairedDevice): Boolean = true
+    override fun addPairedDevice(device: PairedDevice, maxLimit: Int): Boolean = true
     override fun removePairedDevice(deviceId: String) {}
     override fun isDeviceWhitelisted(deviceId: String): Boolean = true
     override fun getPairedDevice(deviceId: String): PairedDevice? = null

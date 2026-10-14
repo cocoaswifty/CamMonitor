@@ -44,7 +44,8 @@ data class PairedDevice(
     val deviceId: String,
     val name: String,
     val publicKeyBase64: String,
-    val pairedTimestamp: Long
+    val pairedTimestamp: Long,
+    val role: String? = null
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -52,6 +53,7 @@ data class PairedDevice(
             put("name", name)
             put("publicKeyBase64", publicKeyBase64)
             put("pairedTimestamp", pairedTimestamp)
+            role?.let { put("role", it) }
         }
     }
 
@@ -61,7 +63,8 @@ data class PairedDevice(
                 deviceId = json.getString("deviceId"),
                 name = json.getString("name"),
                 publicKeyBase64 = json.getString("publicKeyBase64"),
-                pairedTimestamp = json.getLong("pairedTimestamp")
+                pairedTimestamp = json.getLong("pairedTimestamp"),
+                role = json.optString("role").takeIf { it.isNotEmpty() }
             )
         }
     }
