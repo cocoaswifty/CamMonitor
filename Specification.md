@@ -287,7 +287,8 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Left:** `IconButton(Icons.Default.ArrowBack)` $\to$ `"Exit Viewer Mode"`.
 * **Center:**
   * **Title:** Camera device name (e.g. `"Living Room Cam"`). Dynamically updates if PA is renamed.
-  * **Subtitle badge:** Status indicator (`"Live (720p 20fps)"`, `"Connecting to camera..."`, `"Disconnected"`).
+  * **Subtitle badge:** Status indicator (`"Live (720p 20fps)"`, `"Connecting to camera..."`, `"Disconnected"`, `"Connection Failed"`).
+  * **Inline Retry Action:** When status is neither `"Live"` nor `"Connecting"`, a compact `"Retry"` button (`FilledTonalButton`) is displayed adjacent to the status badge to allow immediate manual re-triggering.
   * **Battery Status Row:** Dual device battery indicators:
     * **Camera Battery:** `Icons.Default.Videocam` + text (e.g., `"Cam 85%⚡"`).
     * **Viewer Battery:** `Icons.Default.Smartphone` + text (e.g., `"Viewer 92%"`).
@@ -320,11 +321,20 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 #### 5.4.5 Connection & Error State Overlays
 * **Connecting / Reconnecting State:**
   * Centered semi-transparent scrim with `CircularProgressIndicator` and text: `"Connecting to camera..."` / `"Reconnecting (Attempt 2/5)..."`.
+* **Automatic Disconnect Recovery:**
+  * When `PeerConnectionState.DISCONNECTED` occurs, an automatic reconnection attempt is scheduled after 3 seconds (if user hasn't explicitly navigated back).
+  * When MQTT signaling client restores broker connection (`isConnectedFlow` becomes `true`) while in `Disconnected` or `Connection Failed` state, viewer instantly triggers an automated camera reconnection handshake.
+* **Center Disconnection / Connection Failed Card:**
+  * Elevated centered card surface (`SurfaceContainerHigh` at 92% opacity) rendered when connection is dropped or failed:
+    * `Icons.Default.CloudOff` icon in sunset red.
+    * Status title (`"Disconnected"` / `"Connection Failed"`).
+    * Subtitle: `"Camera connection lost. Auto-reconnecting or tap to retry now."`.
+    * Action: Prominent `"Reconnect Now"` button with refresh icon.
 * **Symmetric NAT Traversal Error Banner:**
-  * Bottom sheet or modal dialog:
+  * Dialog:
     * Title: `"Connection Failed"`.
     * Message: `"Direct P2P traversal failed due to Carrier Symmetric NAT. Please connect devices to Wi-Fi or the same local network."`.
-    * Actions: `[Retry]` and `[Exit]`.
+    * Actions: `[Retry]` (re-attempts handshake) and `[Exit]` (terminates viewer).
 
 ---
 
@@ -391,6 +401,26 @@ flowchart LR
   * Both phones behind Cone / Port-Restricted NAT.
 * **Out-of-Scope Scenario:** Both phones behind Carrier-Grade Symmetric NAT simultaneously across WAN.
 
+### 6.3 Signaling Resiliency & Reconnection Protocol
+* **Generation-Guarded MQTT Client Lifecycle (`clientGeneration`):**
+  * Prevents race conditions and false disconnection events caused by delayed disconnect callbacks from earlier client instances when network drops occur.
+  * Disconnect callbacks matching only the active `clientGeneration` update `_isConnectedFlow` and trigger the backoff loop.
+* **Autonomous Exponential Backoff Reconnection Loop:**
+  * When disconnected from the broker while signaling is desired, an asynchronous reconnect loop retries connection with exponential backoff: `2000ms -> 4000ms -> 8000ms -> 15000ms` (capped at 15s).
+  * Automatically resubscribes to the device's incoming RX topic (`cammonitor/<deviceId>/rx`) upon successful reconnection.
+* **Two-Stage Await in `sendEnvelope`:**
+  * Outbound signaling messages verify broker connection with a primary 7-second await timeout and a secondary 5-second retry before dropping, preventing message failures during transient broker handshakes.
+
+### 6.4 WebRTC ICE Candidate Buffering, Deduplication & Sink Lifecycle
+* **Pre-SDP ICE Candidate Buffering:**
+  * Remote ICE candidates arriving from MQTT signaling before the remote SDP description is applied are safely staged in a thread-safe synchronized queue (`pendingRemoteIceCandidates`).
+  * Once `setRemoteDescription` completes successfully, pending candidates are sequentially drained and added to the `PeerConnection`.
+* **Candidate Deduplication:**
+  * ICE candidates are tracked via a composite fingerprint (`sdpMid:sdpMLineIndex:sdp`) in `addedRemoteIceCandidates`, preventing duplicate evaluations or candidate churn.
+* **Video Sink Lifecycle & Recomposition Resilience:**
+  * `SurfaceViewRenderer` attachment is maintained across Compose recompositions via `AndroidView.update`.
+  * Detaches from `remoteVideoTrack` explicitly on view disposal and `closeAll()` to prevent black frames or dead sinks upon reconnection.
+
 ---
 
 ## 7. Android Platform & OS Compatibility (minSdk 28, targetSdk 37)
@@ -418,7 +448,7 @@ flowchart LR
 | `android.permission.POST_NOTIFICATIONS` | Yes | No | 33 | Sticky Foreground Service notification |
 | `android.permission.FOREGROUND_SERVICE` | Yes | No | 28 | Background service persistence |
 | `android.permission.FOREGROUND_SERVICE_CAMERA` | Yes | No | 34 | Background camera capture permission |
-| `android.permission.WAKE_LOCK` | Yes | No | 28 | Prevent CPU sleep during OLED black screen |
+| `android.permission.WAKE_LOCK` | Yes | No | 28 | Partial WakeLock & High-Perf WifiLock to sustain CPU and Wi-Fi throughput during OLED black screen |
 | `android.permission.MODIFY_AUDIO_SETTINGS` | Yes | Yes | 28 | Speakerphone & Hardware AEC routing |
 
 ### 7.3 FileProvider Configuration (Log Export)
