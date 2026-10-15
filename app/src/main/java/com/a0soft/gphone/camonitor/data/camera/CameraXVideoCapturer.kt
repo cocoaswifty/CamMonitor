@@ -250,14 +250,19 @@ class CameraXVideoCapturer(
         val targetSelector: CameraSelector
         val actuallyNight: Boolean
 
-        if (enableNight && isNightExtensionSupported) {
-            targetSelector = extManager.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
+        if (enableNight) {
+            if (isNightExtensionSupported) {
+                targetSelector = extManager.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
+                AppLogger.i(tag, "Binding CameraX with ExtensionMode.NIGHT")
+            } else {
+                targetSelector = baseSelector
+                AppLogger.i(tag, "Binding CameraX with Standard CameraSelector (applying Camera2 low-light fallback)")
+            }
             actuallyNight = true
-            AppLogger.i(tag, "Binding CameraX with ExtensionMode.NIGHT")
         } else {
             targetSelector = baseSelector
             actuallyNight = false
-            AppLogger.i(tag, "Binding CameraX with Standard CameraSelector")
+            AppLogger.i(tag, "Binding CameraX with Standard CameraSelector (Normal mode)")
         }
 
         val isLandscape = currentTargetRotation == Surface.ROTATION_90 || currentTargetRotation == Surface.ROTATION_270

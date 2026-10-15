@@ -2,7 +2,7 @@
 
 ## 1. Overview
 CamMonitor is a peer-to-peer camera monitoring Android application running across two device roles:
-* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio via CameraX with dynamic Night extension (`ExtensionMode.NIGHT`), ambient light sensor monitoring with debounced hysteresis, customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
+* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio via CameraX with dynamic Night extension (`ExtensionMode.NIGHT`) and Camera2 low-light fallback, ambient light sensor monitoring with debounced hysteresis, customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
 * **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, monitors real-time battery percentages & charging statuses of both devices (PA camera & PB viewer), provides a 3-way Night mode toggle (`Auto` / `Night` / `Normal`), supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
 * **Diagnostics & Logging:** Integrated persistent file-based rolling logger. Logs connection states, WebRTC ICE steps, signaling envelopes, camera lifecycle, and security verifications to local files, complete with an in-app log viewer and export/share feature.
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
@@ -341,9 +341,9 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Right:**
   * **Night Mode 3-Way Toggle Button:** Compact capsule button cycling through `Auto` $\to$ `Night` $\to$ `Normal` $\to$ `Auto`.
     * **Auto (Default):** Uses ambient light sensor (`< 10 lux` activates Night mode, `> 25 lux` returns to Normal). Container: `SecondaryContainer`, Icon: `Icons.Default.BrightnessAuto`.
-    * **Night:** Forces CameraX `ExtensionMode.NIGHT` regardless of ambient light. Container: `PrimaryContainer`, Icon: `Icons.Default.Nightlight`.
-    * **Normal:** Forces standard camera capture mode (Night Extension disabled). Container: `SurfaceContainerHighest`, Icon: `Icons.Default.WbSunny`.
-    * **Protocol:** Tapping dispatches `SET_NIGHT_MODE` command via WebRTC DataChannel; camera rebinds session dynamically and replies with `NIGHT_MODE_REPORT`.
+    * **Night:** Forces Night mode (CameraX `ExtensionMode.NIGHT` or Camera2 low-light fallback) regardless of ambient light. Container: `PrimaryContainer`, Icon: `Icons.Default.Nightlight`.
+    * **Normal:** Forces standard camera capture mode (Night Extension and low-light fallback disabled). Container: `SurfaceContainerHighest`, Icon: `Icons.Default.WbSunny`.
+    * **Protocol:** Tapping dispatches `SET_NIGHT_MODE` command via WebRTC DataChannel; camera rebinds session dynamically and replies with `NIGHT_MODE_REPORT` indicating mode and whether low-light enhancement is actively engaged.
   * **Torch Toggle Button:** Lightbulb/Flash icon. Yellow when PA flashlight is on, outline when off. Tapping sends `TORCH` command via DataChannel.
 
 #### 5.4.3 Persistent Floating Battery Badge
@@ -448,6 +448,14 @@ flowchart LR
   * **Dynamic Night Mode Extension (`ExtensionMode.NIGHT`):**
     * Integrates Jetpack CameraX `ExtensionsManager` to detect vendor hardware night-sight capabilities (`extensionsManager.isExtensionAvailable(cameraSelector, ExtensionMode.NIGHT)`).
     * Supports dynamic session rebinding between Standard `CameraSelector` and Night `CameraSelector` on the fly without tearing down or renegotiating the WebRTC peer connection.
+  * **Camera2 Low-Light Fallback (When Extension Unavailable):**
+    * When hardware Night extension is not available (`isNightExtensionSupported == false`), CameraX binds the standard `CameraSelector` and applies Camera2 low-light ISP optimizations via `Camera2Interop`:
+      1. **Night Scene Mode:** Activates `CaptureRequest.CONTROL_MODE_USE_SCENE_MODE` + `CaptureRequest.CONTROL_SCENE_MODE_NIGHT` if supported in `CONTROL_AVAILABLE_SCENE_MODES`.
+      2. **Auto-Exposure Priority:** Sets `CONTROL_AE_MODE_ON` with `CONTROL_AE_LOCK = false`.
+      3. **Lowest Supported AE Target FPS Range:** Inspects `CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES` with upper bound $\le 20$ and applies the lowest available floor (e.g., `[7, 20]`), allowing the sensor's physical integration shutter time to extend up to 142ms.
+      4. **Optical Image Stabilization (OIS):** Engages `LENS_OPTICAL_STABILIZATION_MODE_ON` if supported to prevent motion blur from longer exposures.
+      5. **3D Noise Reduction:** Engages `NOISE_REDUCTION_MODE_FAST` or `NOISE_REDUCTION_MODE_HIGH_QUALITY` to suppress high ISO chroma and luma grain before encoding.
+    * **Active State Reporting:** Reports `isNightActive = true` when either hardware `ExtensionMode.NIGHT` or the Camera2 low-light fallback is actively engaged, notifying `_isNightModeActiveFlow`, broadcasting `NIGHT_MODE_REPORT` via DataChannel, and illuminating active night indicators on both camera and viewer UIs.
   * **Ambient Light Sensor & Hysteresis Switching:**
     * When in `AUTO` mode, device continuously monitors ambient illuminance using `Sensor.TYPE_LIGHT` (`SensorManager`).
     * Implements strict debounced hysteresis thresholds:
