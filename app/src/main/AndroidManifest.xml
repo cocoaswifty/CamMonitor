@@ -29,6 +29,7 @@
         android:roundIcon="@android:drawable/ic_menu_camera"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
+        android:localeConfig="@xml/locales_config"
         tools:targetApi="37">
 
         <activity

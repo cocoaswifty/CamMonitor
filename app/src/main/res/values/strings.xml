@@ -115,4 +115,12 @@
     <string name="log_share_description">Share Logs</string>
     <string name="log_clear_description">Clear Logs</string>
     <string name="log_filter_all">ALL</string>
+
+    <!-- Language Picker -->
+    <string name="language_picker_title">App Language</string>
+    <string name="language_system_default">System Default</string>
+    <string name="language_english">English</string>
+    <string name="language_traditional_chinese">繁體中文 (台灣)</string>
+    <string name="language_open_system_settings">System Language Settings</string>
+    <string name="cd_language_settings">Change Language</string>
 </resources>

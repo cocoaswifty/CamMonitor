@@ -1,11 +1,13 @@
 package com.a0soft.gphone.camonitor.ui.home
 
 import android.content.res.Configuration
+import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -22,6 +25,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.a0soft.gphone.camonitor.CamMonitorApp
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
+import com.a0soft.gphone.camonitor.ui.common.LocaleHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,10 +37,12 @@ fun HomeScreen(
     onOpenPairedDevices: () -> Unit,
     onOpenLogs: () -> Unit
 ) {
+    val context = LocalContext.current
     val securityRepo = remember { CamMonitorApp.instance.securityRepository }
     var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showSelectCameraDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
     var pairedViewers by remember { mutableStateOf(securityRepo.getPairedViewers()) }
     var pairedCameras by remember { mutableStateOf(securityRepo.getPairedCameras()) }
 
@@ -262,6 +268,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium) },
                 actions = {
+                    IconButton(onClick = { showLanguageDialog = true }) {
+                        Icon(Icons.Default.Language, contentDescription = stringResource(R.string.cd_language_settings))
+                    }
                     IconButton(onClick = onOpenLogs) {
                         Icon(Icons.Default.Description, contentDescription = stringResource(R.string.system_logs))
                     }
@@ -452,6 +461,74 @@ fun HomeScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showSelectCameraDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    if (showLanguageDialog) {
+        val currentTag = remember { LocaleHelper.getCurrentLanguageTag(context) }
+        var selectedTag by remember { mutableStateOf(currentTag) }
+
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = { Text(stringResource(R.string.language_picker_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val options = listOf(
+                        LocaleHelper.LANGUAGE_FOLLOW_SYSTEM to stringResource(R.string.language_system_default),
+                        LocaleHelper.LANGUAGE_EN to stringResource(R.string.language_english),
+                        LocaleHelper.LANGUAGE_ZH_TW to stringResource(R.string.language_traditional_chinese)
+                    )
+
+                    options.forEach { (tag, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = selectedTag == tag,
+                                    onClick = {
+                                        selectedTag = tag
+                                        showLanguageDialog = false
+                                        LocaleHelper.setLanguage(context, tag)
+                                    }
+                                )
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedTag == tag,
+                                onClick = {
+                                    selectedTag = tag
+                                    showLanguageDialog = false
+                                    LocaleHelper.setLanguage(context, tag)
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        TextButton(
+                            onClick = {
+                                LocaleHelper.openSystemLanguageSettings(context)
+                                showLanguageDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.language_open_system_settings))
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showLanguageDialog = false }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }

@@ -193,6 +193,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Top App Bar:**
   * Title: `"CamMonitor"` (HeadlineMedium, bold).
   * Actions:
+    * `IconButton(Icons.Default.Language)` $\to$ Opens **Language Selector Menu** (`"System Default"`, `"English"`, `"繁體中文"`).
     * `IconButton(Icons.Default.Description)` $\to$ Opens **In-App Log Viewer**.
     * `IconButton(Icons.Default.Devices)` $\to$ Opens **Paired Devices Management**.
 * **Body Layout & Adaptive Orientation:**
@@ -512,6 +513,22 @@ flowchart LR
   * Authority: `${applicationId}.fileprovider`
   * Path definition: `<files-path name="logs" path="logs/" />` and `<external-files-path name="ext_logs" path="logs/" />`.
 
+### 7.4 Per-App Language Preferences & Internationalization (i18n)
+* **Supported Languages:**
+  * **English (`en`):** Default resources declared in `res/values/strings.xml`.
+  * **Traditional Chinese (`zh-TW` / `zh-Hant`):** Script-qualified resources in `res/values-b+zh+Hant/strings.xml`.
+* **Resource Qualifier Architecture:**
+  * Uses the BCP-47 script qualifier `values-b+zh+Hant/` exclusively instead of regional qualifiers (`values-zh-rTW/`). On Android 9+ (`minSdk = 28`), BCP-47 matching automatically resolves Traditional Chinese strings for users across Taiwan (`zh-TW`), Hong Kong (`zh-HK`), Macau (`zh-MO`), and generic Traditional Chinese setups without duplicating XML files.
+* **Dual Language Configuration Surfaces:**
+  1. **System "App languages" Setting (Android 13+ / API 33+):** Configured via `android:localeConfig="@xml/locales_config"` in `AndroidManifest.xml` with `<locale-config>` declaring `en` and `zh-TW`.
+  2. **In-App Language Picker:** Dropdown selector located directly in the Home Screen top app bar (`Icons.Default.Language`) enabling instant switching between `"Follow System"`, `"English"`, and `"繁體中文"`.
+* **Dynamic Application & Service Locale Propagation (`LocaleHelper`):**
+  * Android's standard `AppCompatDelegate.setApplicationLocales()` and `LocaleManager.setApplicationLocales()` recreate UI activities, but do not automatically refresh the process-level `Application` singleton or background Services.
+  * To guarantee that string resource lookups through `CamMonitorApp.instance.getString(...)` and `CameraMonitorService` foreground notifications resolve immediately to the selected language:
+    * `LocaleHelper.applyLocaleToResources()` dynamically updates `Configuration.setLocales()` on `CamMonitorApp.instance` and its resources upon language selection.
+    * `CamMonitorApp.attachBaseContext()` and `CameraMonitorService.attachBaseContext()` wrap the base context via `LocaleHelper.wrapContext()`.
+    * `onConfigurationChanged()` in both `CamMonitorApp` and `CameraMonitorService` re-applies the user's chosen locale to prevent OS configuration overwrites.
+
 ---
 
 ## 8. Testability Architecture & Test Suites
@@ -568,3 +585,15 @@ flowchart TD
 * `cameraMode_tapBlackScreen_restoresControlsAndResetsTimer()`: Clicks black screen $\to$ verifies controls re-appear.
 * `viewerMode_pttButton_pressAndRelease_triggersCallbacks()`: Uses Compose `performTouchInput` (down $\to$ up) to verify PTT start and stop callback events.
 * `logViewerScreen_filterChipSelection_filtersDisplayedLogs()`: Taps `[ERROR]` filter chip $\to$ asserts only error rows are displayed.
+
+#### 8.2.5 Localization & App Languages Test Suites
+* **Resource Parity & Formatting Unit Tests (`test/i18n/LocaleResourcesTest.kt`):**
+  * `testLocalesConfigXmlExistsAndValid()`: Verifies `res/xml/locales_config.xml` exists, conforms to `<locale-config>` schema, and declares both `en` and `zh-TW` locales.
+  * `testStringsKeyParityBetweenEnglishAndTraditionalChinese()`: Guarantees 100% key parity between `values/strings.xml` and `values-b+zh+Hant/strings.xml` (detects missing or extraneous keys).
+  * `testPlaceholderConsistency()`: Verifies all format specifiers (`%1$s`, `%1$d`, `%1$02d:%2$02d`, etc.) match between default and translated strings.
+  * `testLocaleHelperConstants()`: Validates language tag constants (`""` for follow system, `"en"`, and `"zh-TW"`).
+* **On-Device Dynamic Locale Switching Instrumented Tests (`androidTest/LocaleHelperInstrumentedTest.kt`):**
+  * `testSwitchToTraditionalChineseUpdatesApplicationStrings()`: Dynamically switches language to Traditional Chinese on UI thread and asserts `CamMonitorApp.instance.getString()` returns translated strings (`"系統記錄"`, `"啟動鏡頭模式"`, etc.).
+  * `testSwitchToEnglishUpdatesApplicationStrings()`: Dynamically switches language to English and asserts `CamMonitorApp.instance.getString()` immediately updates to English (`"System Logs"`, `"Start Camera Mode"`, etc.).
+  * `testTargetLocaleResolution()`: Verifies `LocaleHelper.getTargetLocale()` correctly resolves corresponding `Locale` instances across language states.
+

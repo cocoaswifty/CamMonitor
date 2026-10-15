@@ -1,0 +1,126 @@
+<resources>
+    <string name="app_name">CamMonitor</string>
+    <string name="start_camera_mode">啟動鏡頭模式</string>
+    <string name="start_viewer_mode">啟動觀看模式</string>
+    <string name="exit_camera_mode">退出鏡頭模式</string>
+    <string name="exit_viewer_mode">退出觀看模式</string>
+    <string name="rotate_90">旋轉</string>
+    <string name="notification_channel_name">CamMonitor 服務</string>
+    <string name="notification_channel_description">持續鏡頭串流的前台服務通知</string>
+    <string name="notification_title">CamMonitor 運作中</string>
+    <string name="notification_text">鏡頭串流正在後台持續運作</string>
+    <string name="notification_waiting_for_viewers">等待觀看端連線</string>
+    <string name="notification_streaming_live">正在即時串流給觀看端</string>
+    <string name="notification_standby_waiting">鏡頭待命模式（感光元件已暫停以節省電力）。等待觀看端連線...</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="action_back">返回</string>
+    <string name="action_save">儲存</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_rename">重新命名</string>
+    <string name="action_retry">重試</string>
+    <string name="action_exit">退出</string>
+    <string name="action_revoke">解除配對</string>
+    <string name="action_connect">連線</string>
+    <string name="action_remove_camera">移除鏡頭</string>
+    <string name="action_cancel_pairing">取消配對</string>
+    <string name="system_logs">系統記錄</string>
+    <string name="paired_devices">已配對裝置</string>
+    <string name="dialog_camera_name_label">鏡頭名稱</string>
+    <string name="dialog_rename_camera_title">重新命名鏡頭</string>
+    <string name="device_id_format">ID: %1$s...</string>
+
+    <!-- Home Screen -->
+    <string name="home_no_viewers_paired">尚未配對觀看端（輕觸進行配對）</string>
+    <string name="home_paired_with">已與 %1$s 配對</string>
+    <string name="home_viewers_paired_ready">%1$d 個觀看端已配對（可隨時串流）</string>
+    <string name="home_camera_name_prefix">鏡頭名稱：%1$s</string>
+    <string name="home_paired_viewers_count">已配對觀看端 (%1$d/%2$d)</string>
+    <string name="home_pair_viewer_button">+ 配對觀看端</string>
+    <string name="home_no_cameras_paired">尚未配對鏡頭（輕觸進行配對）</string>
+    <string name="home_cameras_paired_choose">%1$d 個鏡頭已配對（輕觸以選擇）</string>
+    <string name="home_paired_cameras_count">已配對鏡頭 (%1$d/%2$d)</string>
+    <string name="home_pair_camera_button">+ 配對鏡頭</string>
+    <string name="home_pair_another_camera">配對另一個鏡頭 (%1$d/%2$d)</string>
+    <string name="dialog_select_camera_title">選擇要觀看的鏡頭</string>
+    <string name="dialog_choose_camera_stream">請選擇欲觀看的鏡頭串流：</string>
+
+    <!-- Camera Mode Screen -->
+    <string name="camera_live_badge">LIVE 720p@20fps</string>
+    <string name="camera_viewers_count">%1$d/%2$d 觀看端</string>
+    <string name="camera_intercom_live">對講通話中（觀看端發話）</string>
+    <string name="camera_black_screen">熄屏模式</string>
+    <string name="camera_exit_button">退出鏡頭</string>
+    <string name="camera_paused_title">鏡頭已暫停</string>
+    <string name="camera_paused_description">超過 1 分鐘無觀看端連線。已停止感光元件以節省電力。待命模式進行中 — 當觀看端連線時將自動喚醒鏡頭。</string>
+
+    <!-- Viewer Mode Screen -->
+    <string name="camera_default_name">鏡頭</string>
+    <string name="viewer_status_connecting">正在連線至鏡頭...</string>
+    <string name="viewer_status_no_camera">未找到已配對的鏡頭</string>
+    <string name="viewer_status_init_failed">初始化失敗</string>
+    <string name="viewer_status_waiting_response">正在等待鏡頭回應...</string>
+    <string name="viewer_status_starting_stream">正在啟動串流...</string>
+    <string name="viewer_status_camera_rejected">鏡頭拒絕連線：%1$s</string>
+    <string name="viewer_status_live">Live (720p 20fps)</string>
+    <string name="viewer_status_connection_failed">連線失敗</string>
+    <string name="viewer_status_disconnected">已中斷連線</string>
+    <string name="viewer_camera_battery_prefix">鏡頭 %1$s</string>
+    <string name="viewer_device_battery_prefix">觀看端 %1$s</string>
+    <string name="cd_camera_battery">鏡頭電量</string>
+    <string name="cd_viewer_battery">觀看端電量</string>
+    <string name="cd_torch">手電筒</string>
+    <string name="cd_fill_screen">填滿螢幕</string>
+    <string name="cd_fit_screen">配合螢幕</string>
+    <string name="viewer_ptt_transmitting">傳送中...</string>
+    <string name="viewer_ptt_hold_to_talk">按住對講</string>
+    <string name="cd_audio_playback_on">音訊播放開啟</string>
+    <string name="cd_audio_playback_off">音訊播放關閉</string>
+    <string name="viewer_reconnect_prompt">鏡頭連線中斷。正在自動重新連線，或輕觸立即重試。</string>
+    <string name="viewer_reconnect_now">立即重新連線</string>
+    <string name="viewer_symmetric_nat_desc">P2P 直接連線因電信商對稱型 NAT 失敗。請將裝置連線至 Wi-Fi 或相同的區域網路。</string>
+
+    <!-- Camera Pairing Screen -->
+    <string name="camera_pairing_title">配對新觀看端</string>
+    <string name="camera_pairing_broadcasting_as">廣播名稱：%1$s</string>
+    <string name="cd_pairing_qr_code">配對 QR 碼</string>
+    <string name="camera_pairing_otp_expires">OTP 有效時間剩餘 %1$02d:%2$02d</string>
+    <string name="camera_pairing_slot_available">剩餘可用名額 %1$d/%2$d</string>
+    <string name="camera_pairing_instructions">請在裝置 B 上開啟 CamMonitor，點選「啟動觀看模式」並掃描此條碼。</string>
+
+    <!-- Viewer Pairing Screen -->
+    <string name="viewer_pairing_title">掃描鏡頭 QR 碼</string>
+    <string name="viewer_pairing_align_qr">將 QR 碼對準框線以進行配對</string>
+    <string name="viewer_pairing_invalid_qr">無效的 CamMonitor QR 碼格式</string>
+    <string name="viewer_pairing_connecting_broker">已識別有效 QR 碼，正在連線至訊令伺服器...</string>
+    <string name="viewer_pairing_broker_failed">伺服器連線失敗，正在重試...</string>
+    <string name="viewer_pairing_authenticating">正在與 %1$s 進行驗證...</string>
+    <string name="viewer_pairing_success">配對成功！正在啟動觀看端...</string>
+    <string name="viewer_pairing_timeout">配對逾時。請重新對準 QR 碼重試。</string>
+
+    <!-- Manage Devices Screen -->
+    <string name="manage_devices_pair_device">配對裝置</string>
+    <string name="manage_devices_empty_prompt">尚未配對任何裝置。\n配對鏡頭以觀看即時串流（最多 8 台），或配對觀看端以分享此鏡頭（最多 2 台）。</string>
+    <string name="manage_devices_paired_info">配對時間：%1$s\nID: %2$s...</string>
+    <string name="dialog_revoke_title">解除裝置存取授權？</string>
+    <string name="dialog_revoke_message">確定要解除「%1$s」的配對嗎？該裝置將立即失去連線權限。</string>
+    <string name="dialog_pair_new_device_title">配對新裝置</string>
+    <string name="manage_devices_pair_camera_option">配對鏡頭（作為觀看端）</string>
+    <string name="manage_devices_pair_camera_desc">掃描鏡頭 QR 碼以觀看串流（最多 8 台）</string>
+    <string name="manage_devices_pair_viewer_option">配對觀看端（作為鏡頭端）</string>
+    <string name="manage_devices_pair_viewer_desc">顯示 QR 碼供觀看端掃描（最多 2 台）</string>
+
+    <!-- Log Viewer Screen -->
+    <string name="log_share_title">分享 CamMonitor 記錄</string>
+    <string name="log_share_description">分享記錄</string>
+    <string name="log_clear_description">清除記錄</string>
+    <string name="log_filter_all">全部</string>
+
+    <!-- Language Picker -->
+    <string name="language_picker_title">應用程式語言</string>
+    <string name="language_system_default">跟隨系統設定</string>
+    <string name="language_english">English</string>
+    <string name="language_traditional_chinese">繁體中文（台灣）</string>
+    <string name="language_open_system_settings">系統語言設定</string>
+    <string name="cd_language_settings">變更語言</string>
+</resources>

@@ -40,8 +40,20 @@ class MainActivity : ComponentActivity() {
         // Permissions handled
     }
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getLocalizedContext(newBase))
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
+    }
+
+    private var currentLanguageTag: String = ""
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentLanguageTag = com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getCurrentLanguageTag(this)
         enableEdgeToEdge()
 
         requestRequiredPermissions()
@@ -52,6 +64,15 @@ class MainActivity : ComponentActivity() {
                     CamMonitorAppContent()
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val latestTag = com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getCurrentLanguageTag(this)
+        if (latestTag != currentLanguageTag) {
+            currentLanguageTag = latestTag
+            recreate()
         }
     }
 

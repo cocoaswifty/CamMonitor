@@ -33,9 +33,14 @@ class CamMonitorApp : Application() {
     lateinit var torchManager: TorchManager
         private set
 
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getLocalizedContext(base))
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
 
         AppLogger.init(this)
         AppLogger.i("CamMonitorApp", "Application starting, initializing core dependencies")
@@ -61,5 +66,10 @@ class CamMonitorApp : Application() {
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
     }
 }

@@ -60,13 +60,23 @@ class CameraMonitorService : Service() {
         return START_STICKY
     }
 
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getLocalizedContext(newBase))
+    }
+
     override fun onCreate() {
         super.onCreate()
+        com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
         AppLogger.i(tag, "CameraMonitorService created")
         acquireWakeLock()
         acquireWifiLock()
         startForegroundServiceNotification()
         com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(this)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
     }
 
     private fun acquireWakeLock() {
