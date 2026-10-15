@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.ui.log
+package com.a0soft.gphone.camonitor.ui.log
 
 import android.content.Intent
 import androidx.compose.foundation.horizontalScroll
@@ -16,10 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.LogLevel
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.theme.StatusError
@@ -56,10 +58,10 @@ fun LogViewerScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text("System Logs") },
+                title = { Text(stringResource(R.string.system_logs)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
@@ -77,16 +79,16 @@ fun LogViewerScreen(
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Share CamMonitor Logs"))
+                                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.log_share_title)))
                             } catch (e: Exception) {
                                 AppLogger.e("LogViewer", "Failed to share log file", e)
                             }
                         }
                     }) {
-                        Icon(Icons.Default.Share, contentDescription = "Share Logs")
+                        Icon(Icons.Default.Share, contentDescription = stringResource(R.string.log_share_description))
                     }
                     IconButton(onClick = { AppLogger.clearLogs() }) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear Logs")
+                        Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.log_clear_description))
                     }
                 }
             )
@@ -110,7 +112,9 @@ fun LogViewerScreen(
                     FilterChip(
                         selected = selectedFilter == f,
                         onClick = { selectedFilter = f },
-                        label = { Text(f) }
+                        label = {
+                            Text(if (f == "ALL") stringResource(R.string.log_filter_all) else f)
+                        }
                     )
                 }
             }

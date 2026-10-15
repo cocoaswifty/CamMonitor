@@ -125,7 +125,7 @@ class CameraMonitorService : Service() {
     fun startStreaming() {
         val app = CamMonitorApp.instance
         _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
-        updateNotification("Waiting for viewers to connect")
+        updateNotification(getString(R.string.notification_waiting_for_viewers))
 
         app.webRtcManager.onCameraUnexpectedClosed = {
             serviceScope.launch {
@@ -161,13 +161,13 @@ class CameraMonitorService : Service() {
             app.webRtcManager.activeViewersCount.collect { count ->
                 if (count > 0) {
                     _streamingState.value = CameraStreamingState.STREAMING
-                    updateNotification("Streaming live to viewer")
+                    updateNotification(getString(R.string.notification_streaming_live))
                     cancelInactivityTimer()
                     startBatteryBroadcast()
                 } else if (_streamingState.value == CameraStreamingState.STREAMING ||
                     _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS) {
                     _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
-                    updateNotification("Waiting for viewers to connect")
+                    updateNotification(getString(R.string.notification_waiting_for_viewers))
                     stopBatteryBroadcast()
                     startInactivityTimer()
                 }
@@ -205,7 +205,7 @@ class CameraMonitorService : Service() {
             AppLogger.i(tag, "0 viewers for 60s: Stopping camera and pausing")
             CamMonitorApp.instance.webRtcManager.stopCameraCapture()
             _streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
-            updateNotification("Camera in standby (sensor paused to save power). Waiting for viewers...")
+            updateNotification(getString(R.string.notification_standby_waiting))
         }
     }
 

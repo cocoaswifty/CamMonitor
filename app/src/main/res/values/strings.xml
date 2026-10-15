@@ -6,6 +6,113 @@
     <string name="exit_viewer_mode">Exit Viewer Mode</string>
     <string name="rotate_90">Rotate</string>
     <string name="notification_channel_name">CamMonitor Service</string>
+    <string name="notification_channel_description">Foreground service notification for active camera streaming</string>
     <string name="notification_title">CamMonitor Active</string>
     <string name="notification_text">Camera stream is active in the background</string>
+    <string name="notification_waiting_for_viewers">Waiting for viewers to connect</string>
+    <string name="notification_streaming_live">Streaming live to viewer</string>
+    <string name="notification_standby_waiting">Camera in standby (sensor paused to save power). Waiting for viewers...</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="action_back">Back</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_exit">Exit</string>
+    <string name="action_revoke">Revoke</string>
+    <string name="action_connect">Connect</string>
+    <string name="action_remove_camera">Remove Camera</string>
+    <string name="action_cancel_pairing">Cancel Pairing</string>
+    <string name="system_logs">System Logs</string>
+    <string name="paired_devices">Paired Devices</string>
+    <string name="dialog_camera_name_label">Camera Name</string>
+    <string name="dialog_rename_camera_title">Rename Camera</string>
+    <string name="device_id_format">ID: %1$s...</string>
+
+    <!-- Home Screen -->
+    <string name="home_no_viewers_paired">No viewers paired (tap to pair)</string>
+    <string name="home_paired_with">Paired with %1$s</string>
+    <string name="home_viewers_paired_ready">%1$d viewers paired (broadcasting ready)</string>
+    <string name="home_camera_name_prefix">Camera Name: %1$s</string>
+    <string name="home_paired_viewers_count">Paired Viewers (%1$d/%2$d)</string>
+    <string name="home_pair_viewer_button">+ Pair Viewer</string>
+    <string name="home_no_cameras_paired">No paired camera (tap to pair)</string>
+    <string name="home_cameras_paired_choose">%1$d cameras paired (tap to choose)</string>
+    <string name="home_paired_cameras_count">Paired Cameras (%1$d/%2$d)</string>
+    <string name="home_pair_camera_button">+ Pair Camera</string>
+    <string name="home_pair_another_camera">Pair Another Camera (%1$d/%2$d)</string>
+    <string name="dialog_select_camera_title">Select Camera to View</string>
+    <string name="dialog_choose_camera_stream">Choose which camera stream to view:</string>
+
+    <!-- Camera Mode Screen -->
+    <string name="camera_live_badge">LIVE 720p@20fps</string>
+    <string name="camera_viewers_count">%1$d/%2$d Viewers</string>
+    <string name="camera_intercom_live">Intercom Live (Viewer Speaking)</string>
+    <string name="camera_black_screen">Black Screen</string>
+    <string name="camera_exit_button">Exit Camera</string>
+    <string name="camera_paused_title">Camera Paused</string>
+    <string name="camera_paused_description">No viewers connected for 1 minute. Camera sensor stopped to preserve battery. Standby mode active — camera will automatically wake up when a viewer connects.</string>
+
+    <!-- Viewer Mode Screen -->
+    <string name="camera_default_name">Camera</string>
+    <string name="viewer_status_connecting">Connecting to camera...</string>
+    <string name="viewer_status_no_camera">No paired camera found</string>
+    <string name="viewer_status_init_failed">Initialization Failed</string>
+    <string name="viewer_status_waiting_response">Waiting for camera to respond...</string>
+    <string name="viewer_status_starting_stream">Starting stream...</string>
+    <string name="viewer_status_camera_rejected">Camera Rejected: %1$s</string>
+    <string name="viewer_status_live">Live (720p 20fps)</string>
+    <string name="viewer_status_connection_failed">Connection Failed</string>
+    <string name="viewer_status_disconnected">Disconnected</string>
+    <string name="viewer_camera_battery_prefix">Cam %1$s</string>
+    <string name="viewer_device_battery_prefix">Viewer %1$s</string>
+    <string name="cd_camera_battery">Camera Battery</string>
+    <string name="cd_viewer_battery">Viewer Battery</string>
+    <string name="cd_torch">Torch</string>
+    <string name="cd_fill_screen">Fill Screen</string>
+    <string name="cd_fit_screen">Fit to Screen</string>
+    <string name="viewer_ptt_transmitting">Transmitting...</string>
+    <string name="viewer_ptt_hold_to_talk">Hold to Talk</string>
+    <string name="cd_audio_playback_on">Audio Playback On</string>
+    <string name="cd_audio_playback_off">Audio Playback Off</string>
+    <string name="viewer_reconnect_prompt">Camera connection lost. Auto-reconnecting or tap to retry now.</string>
+    <string name="viewer_reconnect_now">Reconnect Now</string>
+    <string name="viewer_symmetric_nat_desc">Direct P2P traversal failed due to Carrier Symmetric NAT. Please connect devices to Wi-Fi or the same local network.</string>
+
+    <!-- Camera Pairing Screen -->
+    <string name="camera_pairing_title">Pair New Viewer</string>
+    <string name="camera_pairing_broadcasting_as">Broadcasting as: %1$s</string>
+    <string name="cd_pairing_qr_code">Pairing QR Code</string>
+    <string name="camera_pairing_otp_expires">OTP expires in %1$02d:%2$02d</string>
+    <string name="camera_pairing_slot_available">Slot %1$d of %2$d Available</string>
+    <string name="camera_pairing_instructions">Open CamMonitor on Device B, tap \'Start Viewer Mode\' and scan this code.</string>
+
+    <!-- Viewer Pairing Screen -->
+    <string name="viewer_pairing_title">Scan Camera QR Code</string>
+    <string name="viewer_pairing_align_qr">Align QR code within the frame to pair</string>
+    <string name="viewer_pairing_invalid_qr">Invalid CamMonitor QR code format</string>
+    <string name="viewer_pairing_connecting_broker">Valid QR detected. Connecting to signaling broker...</string>
+    <string name="viewer_pairing_broker_failed">Broker connection failed. Retrying...</string>
+    <string name="viewer_pairing_authenticating">Authenticating with %1$s...</string>
+    <string name="viewer_pairing_success">Pairing successful! Starting viewer...</string>
+    <string name="viewer_pairing_timeout">Pairing timed out. Align QR code again to retry.</string>
+
+    <!-- Manage Devices Screen -->
+    <string name="manage_devices_pair_device">Pair Device</string>
+    <string name="manage_devices_empty_prompt">No paired devices yet.\nPair a camera to view streams (up to 8) or pair a viewer to share this camera (up to 2).</string>
+    <string name="manage_devices_paired_info">Paired on %1$s\nID: %2$s...</string>
+    <string name="dialog_revoke_title">Revoke Device Access?</string>
+    <string name="dialog_revoke_message">Are you sure you want to revoke \'%1$s\'? It will immediately lose connection access.</string>
+    <string name="dialog_pair_new_device_title">Pair New Device</string>
+    <string name="manage_devices_pair_camera_option">Pair Camera (as Viewer)</string>
+    <string name="manage_devices_pair_camera_desc">Scan camera QR code to view stream (max 8)</string>
+    <string name="manage_devices_pair_viewer_option">Pair Viewer (as Camera)</string>
+    <string name="manage_devices_pair_viewer_desc">Show QR code for viewer to scan (max 2)</string>
+
+    <!-- Log Viewer Screen -->
+    <string name="log_share_title">Share CamMonitor Logs</string>
+    <string name="log_share_description">Share Logs</string>
+    <string name="log_clear_description">Clear Logs</string>
+    <string name="log_filter_all">ALL</string>
 </resources>

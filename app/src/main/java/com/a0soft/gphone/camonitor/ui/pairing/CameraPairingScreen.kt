@@ -10,9 +10,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import com.a0soft.gphone.camonitor.data.model.PairingPayload
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
@@ -106,10 +109,10 @@ fun CameraPairingScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text("Pair New Viewer") },
+                title = { Text(stringResource(R.string.camera_pairing_title)) },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -124,7 +127,7 @@ fun CameraPairingScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Broadcasting as: $cameraName",
+                text = stringResource(R.string.camera_pairing_broadcasting_as, cameraName),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -147,7 +150,7 @@ fun CameraPairingScreen(
                     if (qrBitmap != null) {
                         Image(
                             bitmap = qrBitmap,
-                            contentDescription = "Pairing QR Code",
+                            contentDescription = stringResource(R.string.cd_pairing_qr_code),
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
@@ -163,7 +166,7 @@ fun CameraPairingScreen(
             val seconds = secondsLeft % 60
             SuggestionChip(
                 onClick = {},
-                label = { Text("OTP expires in %02d:%02d".format(minutes, seconds)) },
+                label = { Text(stringResource(R.string.camera_pairing_otp_expires, minutes, seconds)) },
                 colors = SuggestionChipDefaults.suggestionChipColors(
                     labelColor = if (secondsLeft < 60) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                 )
@@ -173,7 +176,7 @@ fun CameraPairingScreen(
 
             val currentCount = securityRepo.getPairedViewers().size
             Text(
-                text = "Slot ${currentCount + 1} of 2 Available",
+                text = stringResource(R.string.camera_pairing_slot_available, currentCount + 1, SecurityRepository.MAX_PAIRED_VIEWERS),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -181,7 +184,7 @@ fun CameraPairingScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Open CamMonitor on Device B, tap 'Start Viewer Mode' and scan this code.",
+                text = stringResource(R.string.camera_pairing_instructions),
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -195,7 +198,7 @@ fun CameraPairingScreen(
                     onCancel()
                 }
             ) {
-                Text("Cancel Pairing")
+                Text(stringResource(R.string.action_cancel_pairing))
             }
         }
     }

@@ -12,9 +12,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -43,10 +45,10 @@ fun ManageDevicesScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text("Paired Devices") },
+                title = { Text(stringResource(R.string.paired_devices)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -64,7 +66,7 @@ fun ManageDevicesScreen(
                         }
                     },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("Pair Device") }
+                    text = { Text(stringResource(R.string.manage_devices_pair_device)) }
                 )
             }
         }
@@ -78,7 +80,7 @@ fun ManageDevicesScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No paired devices yet.\nPair a camera to view streams (up to 8) or pair a viewer to share this camera (up to 2).",
+                    text = stringResource(R.string.manage_devices_empty_prompt),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -115,7 +117,7 @@ fun ManageDevicesScreen(
                                 val dateStr = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
                                     .format(Date(device.pairedTimestamp))
                                 Text(
-                                    text = "Paired on $dateStr\nID: ${device.deviceId.take(8)}...",
+                                    text = stringResource(R.string.manage_devices_paired_info, dateStr, device.deviceId.take(8)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -123,7 +125,7 @@ fun ManageDevicesScreen(
                             IconButton(onClick = { deviceToRevoke = device }) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
-                                    contentDescription = "Revoke",
+                                    contentDescription = stringResource(R.string.action_revoke),
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -138,9 +140,9 @@ fun ManageDevicesScreen(
         val target = deviceToRevoke!!
         AlertDialog(
             onDismissRequest = { deviceToRevoke = null },
-            title = { Text("Revoke Device Access?") },
+            title = { Text(stringResource(R.string.dialog_revoke_title)) },
             text = {
-                Text("Are you sure you want to revoke '${target.name}'? It will immediately lose connection access.")
+                Text(stringResource(R.string.dialog_revoke_message, target.name))
             },
             confirmButton = {
                 TextButton(
@@ -151,12 +153,12 @@ fun ManageDevicesScreen(
                         deviceToRevoke = null
                     }
                 ) {
-                    Text("Revoke", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.action_revoke), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deviceToRevoke = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -165,7 +167,7 @@ fun ManageDevicesScreen(
     if (showPairOptionsDialog) {
         AlertDialog(
             onDismissRequest = { showPairOptionsDialog = false },
-            title = { Text("Pair New Device") },
+            title = { Text(stringResource(R.string.dialog_pair_new_device_title)) },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -197,9 +199,9 @@ fun ManageDevicesScreen(
                                     modifier = Modifier.size(32.dp)
                                 )
                                 Column {
-                                    Text("Pair Camera (as Viewer)", style = MaterialTheme.typography.titleMedium)
+                                    Text(stringResource(R.string.manage_devices_pair_camera_option), style = MaterialTheme.typography.titleMedium)
                                     Text(
-                                        "Scan camera QR code to view stream (max 8)",
+                                        stringResource(R.string.manage_devices_pair_camera_desc),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -234,9 +236,9 @@ fun ManageDevicesScreen(
                                     modifier = Modifier.size(32.dp)
                                 )
                                 Column {
-                                    Text("Pair Viewer (as Camera)", style = MaterialTheme.typography.titleMedium)
+                                    Text(stringResource(R.string.manage_devices_pair_viewer_option), style = MaterialTheme.typography.titleMedium)
                                     Text(
-                                        "Show QR code for viewer to scan (max 2)",
+                                        stringResource(R.string.manage_devices_pair_viewer_desc),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -249,7 +251,7 @@ fun ManageDevicesScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showPairOptionsDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )

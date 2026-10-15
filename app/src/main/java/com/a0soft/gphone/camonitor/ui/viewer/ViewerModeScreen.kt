@@ -24,10 +24,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
@@ -40,6 +42,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.webrtc.*
+
+sealed interface ViewerConnectionState {
+    object Connecting : ViewerConnectionState
+    object NoCamera : ViewerConnectionState
+    object InitFailed : ViewerConnectionState
+    object WaitingResponse : ViewerConnectionState
+    object StartingStream : ViewerConnectionState
+    data class Rejected(val reason: String) : ViewerConnectionState
+    object Live : ViewerConnectionState
+    object Failed : ViewerConnectionState
+    object Disconnected : ViewerConnectionState
+}
 
 @Composable
 fun ViewerModeScreen(
@@ -61,12 +75,29 @@ fun ViewerModeScreen(
         }
     }
 
-    var cameraName by remember { mutableStateOf(targetCamera?.name ?: "Camera") }
-    var connectionStatus by remember { mutableStateOf("Connecting to camera...") }
+    var cameraName by remember { mutableStateOf(targetCamera?.name ?: "") }
+    var connectionState by remember { mutableStateOf<ViewerConnectionState>(ViewerConnectionState.Connecting) }
     var rotationDegrees by remember { mutableStateOf(0f) }
     var isAspectFit by remember { mutableStateOf(true) }
     var videoAspectRatio by remember { mutableStateOf<Float?>(null) }
     var isControlsVisible by remember { mutableStateOf(true) }
+
+    val displayName = cameraName.ifEmpty { stringResource(R.string.camera_default_name) }
+    val connectionStatus = when (val s = connectionState) {
+        ViewerConnectionState.Connecting -> stringResource(R.string.viewer_status_connecting)
+        ViewerConnectionState.NoCamera -> stringResource(R.string.viewer_status_no_camera)
+        ViewerConnectionState.InitFailed -> stringResource(R.string.viewer_status_init_failed)
+        ViewerConnectionState.WaitingResponse -> stringResource(R.string.viewer_status_waiting_response)
+        ViewerConnectionState.StartingStream -> stringResource(R.string.viewer_status_starting_stream)
+        is ViewerConnectionState.Rejected -> stringResource(R.string.viewer_status_camera_rejected, s.reason)
+        ViewerConnectionState.Live -> stringResource(R.string.viewer_status_live)
+        ViewerConnectionState.Failed -> stringResource(R.string.viewer_status_connection_failed)
+        ViewerConnectionState.Disconnected -> stringResource(R.string.viewer_status_disconnected)
+    }
+    val isLive = connectionState is ViewerConnectionState.Live
+    val isConnecting = connectionState is ViewerConnectionState.Connecting ||
+        connectionState is ViewerConnectionState.StartingStream ||
+        connectionState is ViewerConnectionState.WaitingResponse
     var isAudioEnabled by remember { mutableStateOf(securityRepo.isViewerAudioPlaybackEnabled()) }
     var isTorchActive by remember { mutableStateOf(false) }
     var isPttPressed by remember { mutableStateOf(false) }
@@ -120,7 +151,7 @@ fun ViewerModeScreen(
     // Connect to camera on launch and on reconnectTrigger
     LaunchedEffect(targetCamera, reconnectTrigger) {
         if (targetCamera == null) {
-            connectionStatus = "No paired camera found"
+            connectionState = ViewerConnectionState.NoCamera
             AppLogger.w("ViewerMode", "No paired camera found in repository")
             return@LaunchedEffect
         }
@@ -128,7 +159,7 @@ fun ViewerModeScreen(
 
         webRtcManager.closePeer(targetCamera.deviceId)
         surfaceRenderer?.let { webRtcManager.attachRemoteRenderer(it) }
-        connectionStatus = "Connecting to camera..."
+        connectionState = ViewerConnectionState.Connecting
 
         val startTime = System.currentTimeMillis()
         AppLogger.i("ViewerMode", "Starting WebRTC connection to camera: ${targetCamera.name} (${targetCamera.deviceId}) (trigger=$reconnectTrigger)")
@@ -151,7 +182,7 @@ fun ViewerModeScreen(
             }
         } ?: run {
             AppLogger.e("ViewerMode", "Failed creating PeerConnection for ${targetCamera.deviceId}")
-            connectionStatus = "Initialization Failed"
+            connectionState = ViewerConnectionState.InitFailed
             return@LaunchedEffect
         }
 
@@ -226,7 +257,7 @@ fun ViewerModeScreen(
                         }
                     }
                     if (attempt >= 15 && pc.connectionState() == PeerConnection.PeerConnectionState.NEW) {
-                        connectionStatus = "Waiting for camera to respond..."
+                        connectionState = ViewerConnectionState.WaitingResponse
                     }
                 }
             }
@@ -252,7 +283,7 @@ fun ViewerModeScreen(
                                 val setElapsed = System.currentTimeMillis() - startTime
                                 AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
                                 webRtcManager.drainRemoteIceCandidates(targetCamera.deviceId)
-                                connectionStatus = "Starting stream..."
+                                connectionState = ViewerConnectionState.StartingStream
 
                                 val candidatesSnapshot = ArrayList(localIceCandidates)
                                 AppLogger.i("ViewerMode", "Camera answered: transmitting ${candidatesSnapshot.size} local ICE candidates...")
@@ -281,7 +312,7 @@ fun ViewerModeScreen(
                         val elapsed = System.currentTimeMillis() - startTime
                         AppLogger.w("ViewerMode", "Camera rejected connection (+${elapsed}ms): ${msg.reason}")
                         retryJob.cancel()
-                        connectionStatus = "Camera Rejected: ${msg.reason}"
+                        connectionState = ViewerConnectionState.Rejected(msg.reason)
                     }
                     else -> {}
                 }
@@ -327,7 +358,7 @@ fun ViewerModeScreen(
             AppLogger.i("ViewerMode", "WebRTC PeerConnectionState changed to: $state")
             when (state) {
                 PeerConnection.PeerConnectionState.CONNECTED -> {
-                    connectionStatus = "Live (720p 20fps)"
+                    connectionState = ViewerConnectionState.Live
                     hasSymmetricNatError = false
                     targetCamera?.let { cam ->
                         coroutineScope.launch {
@@ -338,19 +369,19 @@ fun ViewerModeScreen(
                         }
                     }
                 }
-                PeerConnection.PeerConnectionState.CONNECTING -> connectionStatus = "Connecting to camera..."
+                PeerConnection.PeerConnectionState.CONNECTING -> connectionState = ViewerConnectionState.Connecting
                 PeerConnection.PeerConnectionState.FAILED -> {
-                    connectionStatus = "Connection Failed"
+                    connectionState = ViewerConnectionState.Failed
                     hasSymmetricNatError = true
                     AppLogger.e("ViewerMode", "WebRTC connection failed (potential symmetric NAT traversal failure)")
                 }
                 PeerConnection.PeerConnectionState.DISCONNECTED -> {
-                    connectionStatus = "Disconnected"
+                    connectionState = ViewerConnectionState.Disconnected
                     AppLogger.w("ViewerMode", "WebRTC connection disconnected, scheduling auto-reconnect in 3s")
                     if (!isUserExited) {
                         coroutineScope.launch {
                             delay(3000L)
-                            if (!isUserExited && connectionStatus == "Disconnected") {
+                            if (!isUserExited && connectionState is ViewerConnectionState.Disconnected) {
                                 AppLogger.i("ViewerMode", "Auto-reconnecting after disconnect...")
                                 reconnectTrigger++
                             }
@@ -365,7 +396,7 @@ fun ViewerModeScreen(
     // Auto-reconnect when signaling reconnects after a network drop
     LaunchedEffect(Unit) {
         signalingClient.isConnectedFlow.collect { connected ->
-            if (connected && !isUserExited && (connectionStatus == "Disconnected" || connectionStatus == "Connection Failed")) {
+            if (connected && !isUserExited && (connectionState is ViewerConnectionState.Disconnected || connectionState is ViewerConnectionState.Failed)) {
                 AppLogger.i("ViewerMode", "Signaling restored, triggering camera reconnect")
                 reconnectTrigger++
             }
@@ -491,12 +522,12 @@ fun ViewerModeScreen(
                         IconButton(onClick = {
                             exitViewer()
                         }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Exit Viewer")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.exit_viewer_mode))
                         }
 
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = cameraName,
+                                text = displayName,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = Color.White
                             )
@@ -504,21 +535,21 @@ fun ViewerModeScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(8.dp)
-                                        .background(if (connectionStatus.startsWith("Live")) StatusLive else MaterialTheme.colorScheme.error, CircleShape)
+                                        .background(if (isLive) StatusLive else MaterialTheme.colorScheme.error, CircleShape)
                                 )
                                 Text(
                                     text = connectionStatus,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (connectionStatus.startsWith("Live")) StatusLive else MaterialTheme.colorScheme.error
+                                    color = if (isLive) StatusLive else MaterialTheme.colorScheme.error
                                 )
-                                if (!connectionStatus.startsWith("Live") && !connectionStatus.startsWith("Connecting")) {
+                                if (!isLive && !isConnecting) {
                                     Spacer(modifier = Modifier.width(4.dp))
                                     FilledTonalButton(
                                         onClick = { reconnectTrigger++ },
                                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                                         modifier = Modifier.height(20.dp)
                                     ) {
-                                        Text("Retry", style = MaterialTheme.typography.labelSmall)
+                                        Text(stringResource(R.string.action_retry), style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
                             }
@@ -533,12 +564,12 @@ fun ViewerModeScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Videocam,
-                                        contentDescription = "Camera Battery",
+                                        contentDescription = stringResource(R.string.cd_camera_battery),
                                         modifier = Modifier.size(13.dp),
                                         tint = Color.LightGray
                                     )
                                     Text(
-                                        text = "Cam ${BatteryHelper.formatPercentage(paBatteryInfo)}",
+                                        text = stringResource(R.string.viewer_camera_battery_prefix, BatteryHelper.formatPercentage(paBatteryInfo)),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = getBatteryColor(paBatteryInfo)
                                     )
@@ -556,12 +587,12 @@ fun ViewerModeScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Smartphone,
-                                        contentDescription = "Viewer Battery",
+                                        contentDescription = stringResource(R.string.cd_viewer_battery),
                                         modifier = Modifier.size(13.dp),
                                         tint = Color.LightGray
                                     )
                                     Text(
-                                        text = "Viewer ${BatteryHelper.formatPercentage(pbBatteryInfo)}",
+                                        text = stringResource(R.string.viewer_device_battery_prefix, BatteryHelper.formatPercentage(pbBatteryInfo)),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = getBatteryColor(pbBatteryInfo)
                                     )
@@ -581,7 +612,7 @@ fun ViewerModeScreen(
                         }) {
                             Icon(
                                 imageVector = if (isTorchActive) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                                contentDescription = "Torch",
+                                contentDescription = stringResource(R.string.cd_torch),
                                 tint = if (isTorchActive) MaterialTheme.colorScheme.primary else Color.White
                             )
                         }
@@ -601,7 +632,7 @@ fun ViewerModeScreen(
                             AppLogger.i("ViewerMode", "Rotate button clicked: new rotationDegrees=$rotationDegrees")
                         }
                     ) {
-                        Icon(Icons.Default.Rotate90DegreesCw, contentDescription = "Rotate")
+                        Icon(Icons.Default.Rotate90DegreesCw, contentDescription = stringResource(R.string.rotate_90))
                     }
 
                     // Aspect Ratio (Fit / Fill) Toggle Button
@@ -613,7 +644,7 @@ fun ViewerModeScreen(
                     ) {
                         Icon(
                             imageVector = if (isAspectFit) Icons.Default.Fullscreen else Icons.Default.FitScreen,
-                            contentDescription = if (isAspectFit) "Fill Screen" else "Fit to Screen"
+                            contentDescription = if (isAspectFit) stringResource(R.string.cd_fill_screen) else stringResource(R.string.cd_fit_screen)
                         )
                     }
 
@@ -639,7 +670,7 @@ fun ViewerModeScreen(
                                         try {
                                             awaitRelease()
                                         } finally {
-                                            isPttPressed = false
+                                             isPttPressed = false
                                             webRtcManager.setPttActive(false)
                                             targetCamera?.let {
                                                 webRtcManager.sendDataChannelCommand(it.deviceId, ControlCommand.PttStop)
@@ -660,7 +691,7 @@ fun ViewerModeScreen(
                         ) {
                             Icon(Icons.Default.Mic, contentDescription = null)
                             Text(
-                                text = if (isPttPressed) "Transmitting..." else "Hold to Talk",
+                                text = if (isPttPressed) stringResource(R.string.viewer_ptt_transmitting) else stringResource(R.string.viewer_ptt_hold_to_talk),
                                 style = MaterialTheme.typography.labelLarge
                             )
                         }
@@ -677,7 +708,7 @@ fun ViewerModeScreen(
                     ) {
                         Icon(
                             imageVector = if (isAudioEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                            contentDescription = if (isAudioEnabled) "Audio Playback On" else "Audio Playback Off"
+                            contentDescription = if (isAudioEnabled) stringResource(R.string.cd_audio_playback_on) else stringResource(R.string.cd_audio_playback_off)
                         )
                     }
                 }
@@ -705,7 +736,7 @@ fun ViewerModeScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Videocam,
-                            contentDescription = "Camera Battery",
+                            contentDescription = stringResource(R.string.cd_camera_battery),
                             modifier = Modifier.size(12.dp),
                             tint = Color.LightGray
                         )
@@ -728,7 +759,7 @@ fun ViewerModeScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Smartphone,
-                            contentDescription = "Viewer Battery",
+                            contentDescription = stringResource(R.string.cd_viewer_battery),
                             modifier = Modifier.size(12.dp),
                             tint = Color.LightGray
                         )
@@ -743,7 +774,7 @@ fun ViewerModeScreen(
         }
 
         // Center Reconnect Overlay when Disconnected or Failed
-        if (connectionStatus == "Disconnected" || connectionStatus == "Connection Failed") {
+        if (connectionState is ViewerConnectionState.Disconnected || connectionState is ViewerConnectionState.Failed) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -768,7 +799,7 @@ fun ViewerModeScreen(
                         color = Color.White
                     )
                     Text(
-                        text = "Camera connection lost. Auto-reconnecting or tap to retry now.",
+                        text = stringResource(R.string.viewer_reconnect_prompt),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.LightGray,
                         textAlign = TextAlign.Center
@@ -779,7 +810,7 @@ fun ViewerModeScreen(
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Reconnect Now")
+                        Text(stringResource(R.string.viewer_reconnect_now))
                     }
                 }
             }
@@ -789,16 +820,16 @@ fun ViewerModeScreen(
         if (hasSymmetricNatError) {
             AlertDialog(
                 onDismissRequest = { hasSymmetricNatError = false },
-                title = { Text("Connection Failed") },
+                title = { Text(stringResource(R.string.viewer_status_connection_failed)) },
                 text = {
-                    Text("Direct P2P traversal failed due to Carrier Symmetric NAT. Please connect devices to Wi-Fi or the same local network.")
+                    Text(stringResource(R.string.viewer_symmetric_nat_desc))
                 },
                 confirmButton = {
                     TextButton(onClick = {
                         hasSymmetricNatError = false
                         exitViewer()
                     }) {
-                        Text("Exit")
+                        Text(stringResource(R.string.action_exit))
                     }
                 },
                 dismissButton = {
@@ -806,7 +837,7 @@ fun ViewerModeScreen(
                         hasSymmetricNatError = false
                         reconnectTrigger++
                     }) {
-                        Text("Retry")
+                        Text(stringResource(R.string.action_retry))
                     }
                 }
             )

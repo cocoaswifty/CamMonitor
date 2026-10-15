@@ -56,7 +56,7 @@ class CamMonitorApp : Application() {
                 getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Foreground service notification for active camera streaming"
+                description = getString(R.string.notification_channel_description)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)

@@ -1,5 +1,6 @@
 package com.a0soft.gphone.camonitor.ui.pairing
 
+import android.content.Context
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -14,6 +15,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
+import com.a0soft.gphone.camonitor.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -58,7 +61,8 @@ fun ViewerPairingScreen(
     val signalingClient = app.signalingClient
 
     var isScanning by remember { mutableStateOf(true) }
-    var pairingStatus by remember { mutableStateOf("Align QR code within the frame to pair") }
+    val defaultPairingStatus = stringResource(R.string.viewer_pairing_align_qr)
+    var pairingStatus by remember { mutableStateOf<String?>(null) }
     var cameraControl by remember { mutableStateOf<androidx.camera.core.CameraControl?>(null) }
     var isTorchEnabled by remember { mutableStateOf(false) }
     var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
@@ -93,10 +97,10 @@ fun ViewerPairingScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text("Scan Camera QR Code") },
+                title = { Text(stringResource(R.string.viewer_pairing_title)) },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
@@ -104,7 +108,7 @@ fun ViewerPairingScreen(
                         isTorchEnabled = !isTorchEnabled
                         cameraControl?.enableTorch(isTorchEnabled)
                     }) {
-                        Icon(Icons.Default.FlashOn, contentDescription = "Torch")
+                        Icon(Icons.Default.FlashOn, contentDescription = stringResource(R.string.cd_torch))
                     }
                 }
             )
@@ -159,6 +163,7 @@ fun ViewerPairingScreen(
                                 } catch (_: Exception) {}
                                 coroutineScope.launch {
                                     handleScannedQr(
+                                        context,
                                         result,
                                         app,
                                         securityRepo,
@@ -234,7 +239,7 @@ fun ViewerPairingScreen(
                 color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.9f)
             ) {
                 Text(
-                    text = pairingStatus,
+                    text = pairingStatus ?: defaultPairingStatus,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onSurface
@@ -264,6 +269,7 @@ private fun scanQrFromImageProxy(image: ImageProxy, reader: MultiFormatReader): 
 }
 
 private suspend fun handleScannedQr(
+    context: Context,
     qrText: String,
     app: CamMonitorApp,
     securityRepo: com.a0soft.gphone.camonitor.data.security.SecurityRepository,
@@ -274,7 +280,7 @@ private suspend fun handleScannedQr(
 ) {
     val payload = PairingPayload.fromJson(qrText)
     if (payload == null) {
-        updateStatus("Invalid CamMonitor QR code format")
+        updateStatus(context.getString(R.string.viewer_pairing_invalid_qr))
         delay(2000L)
         onRetry()
         return
@@ -283,11 +289,11 @@ private suspend fun handleScannedQr(
     // Set active pairing OTP so SignalingClient can decrypt PAIR_CONFIRM
     securityRepo.setActivePairingOtp(payload.secret)
 
-    updateStatus("Valid QR detected. Connecting to signaling broker...")
+    updateStatus(context.getString(R.string.viewer_pairing_connecting_broker))
 
     val connected = signalingClient.startListening()
     if (!connected) {
-        updateStatus("Broker connection failed. Retrying...")
+        updateStatus(context.getString(R.string.viewer_pairing_broker_failed))
     }
 
     val otpKey = CryptoUtils.hkdfSha256(
@@ -303,7 +309,7 @@ private suspend fun handleScannedQr(
         pbPublicKeyBase64 = securityRepo.getDevicePublicKeyBase64()
     )
 
-    updateStatus("Authenticating with ${payload.name}...")
+    updateStatus(context.getString(R.string.viewer_pairing_authenticating, payload.name))
 
     var isConfirmed = false
 
@@ -334,7 +340,7 @@ private suspend fun handleScannedQr(
                         role = "CAMERA"
                     )
                     securityRepo.addPairedDevice(pairedCam, maxLimit = com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_PAIRED_CAMERAS)
-                    updateStatus("Pairing successful! Starting viewer...")
+                    updateStatus(context.getString(R.string.viewer_pairing_success))
                     delay(300L)
                     onSuccess(msg.paDeviceId)
                     return@collect
@@ -348,7 +354,7 @@ private suspend fun handleScannedQr(
     if (!isConfirmed) {
         AppLogger.w("ViewerPairing", "Pairing timed out with ${payload.name}")
         securityRepo.clearPairingOtp()
-        updateStatus("Pairing timed out. Align QR code again to retry.")
+        updateStatus(context.getString(R.string.viewer_pairing_timeout))
         delay(2500L)
         onRetry()
     }

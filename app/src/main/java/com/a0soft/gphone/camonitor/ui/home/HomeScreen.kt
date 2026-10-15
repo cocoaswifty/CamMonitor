@@ -14,11 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,15 +97,15 @@ fun HomeScreen(
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Start Camera Mode",
+                                text = stringResource(R.string.start_camera_mode),
                                 style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = when {
-                                    pairedViewers.isEmpty() -> "No viewers paired (tap to pair)"
-                                    pairedViewers.size == 1 -> "Paired with ${pairedViewers.first().name}"
-                                    else -> "${pairedViewers.size} viewers paired (broadcasting ready)"
+                                    pairedViewers.isEmpty() -> stringResource(R.string.home_no_viewers_paired)
+                                    pairedViewers.size == 1 -> stringResource(R.string.home_paired_with, pairedViewers.first().name)
+                                    else -> stringResource(R.string.home_viewers_paired_ready, pairedViewers.size)
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -122,13 +124,13 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Camera Name: $cameraName",
+                            text = stringResource(R.string.home_camera_name_prefix, cameraName),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Icon(
                             imageVector = Icons.Default.Edit,
-                            contentDescription = "Rename",
+                            contentDescription = stringResource(R.string.action_rename),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
@@ -143,7 +145,7 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Paired Viewers (${pairedViewers.size}/${SecurityRepository.MAX_PAIRED_VIEWERS})",
+                            text = stringResource(R.string.home_paired_viewers_count, pairedViewers.size, SecurityRepository.MAX_PAIRED_VIEWERS),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -158,7 +160,7 @@ fun HomeScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("+ Pair Viewer", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.home_pair_viewer_button), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -205,15 +207,15 @@ fun HomeScreen(
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Start Viewer Mode",
+                                text = stringResource(R.string.start_viewer_mode),
                                 style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = when {
-                                    pairedCameras.isEmpty() -> "No paired camera (tap to pair)"
-                                    pairedCameras.size == 1 -> "Paired with ${pairedCameras.first().name}"
-                                    else -> "${pairedCameras.size} cameras paired (tap to choose)"
+                                    pairedCameras.isEmpty() -> stringResource(R.string.home_no_cameras_paired)
+                                    pairedCameras.size == 1 -> stringResource(R.string.home_paired_with, pairedCameras.first().name)
+                                    else -> stringResource(R.string.home_cameras_paired_choose, pairedCameras.size)
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -230,7 +232,7 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Paired Cameras (${pairedCameras.size}/${SecurityRepository.MAX_PAIRED_CAMERAS})",
+                            text = stringResource(R.string.home_paired_cameras_count, pairedCameras.size, SecurityRepository.MAX_PAIRED_CAMERAS),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -245,7 +247,7 @@ fun HomeScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("+ Pair Camera", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.home_pair_camera_button), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -258,13 +260,13 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text("CamMonitor", style = MaterialTheme.typography.headlineMedium) },
+                title = { Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium) },
                 actions = {
                     IconButton(onClick = onOpenLogs) {
-                        Icon(Icons.Default.Description, contentDescription = "System Logs")
+                        Icon(Icons.Default.Description, contentDescription = stringResource(R.string.system_logs))
                     }
                     IconButton(onClick = onOpenPairedDevices) {
-                        Icon(Icons.Default.Devices, contentDescription = "Paired Devices")
+                        Icon(Icons.Default.Devices, contentDescription = stringResource(R.string.paired_devices))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -311,12 +313,12 @@ fun HomeScreen(
         var tempName by remember { mutableStateOf(cameraName) }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename Camera") },
+            title = { Text(stringResource(R.string.dialog_rename_camera_title)) },
             text = {
                 OutlinedTextField(
                     value = tempName,
                     onValueChange = { if (it.length <= 32) tempName = it },
-                    label = { Text("Camera Name") },
+                    label = { Text(stringResource(R.string.dialog_camera_name_label)) },
                     singleLine = true,
                     supportingText = { Text("${tempName.length}/32") }
                 )
@@ -332,12 +334,12 @@ fun HomeScreen(
                         showRenameDialog = false
                     }
                 ) {
-                    Text("Save")
+                    Text(stringResource(R.string.action_save))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -346,13 +348,13 @@ fun HomeScreen(
     if (showSelectCameraDialog) {
         AlertDialog(
             onDismissRequest = { showSelectCameraDialog = false },
-            title = { Text("Select Camera to View") },
+            title = { Text(stringResource(R.string.dialog_select_camera_title)) },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Choose which camera stream to view:",
+                        text = stringResource(R.string.dialog_choose_camera_stream),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -400,14 +402,14 @@ fun HomeScreen(
                                                 style = MaterialTheme.typography.titleMedium
                                             )
                                             Text(
-                                                text = "ID: ${device.deviceId.take(8)}...",
+                                                text = stringResource(R.string.device_id_format, device.deviceId.take(8)),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         Icon(
                                             imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Connect",
+                                            contentDescription = stringResource(R.string.action_connect),
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -422,7 +424,7 @@ fun HomeScreen(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
-                                            contentDescription = "Remove Camera",
+                                            contentDescription = stringResource(R.string.action_remove_camera),
                                             tint = MaterialTheme.colorScheme.error
                                         )
                                     }
@@ -442,7 +444,7 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Pair Another Camera (${pairedCameras.size}/${SecurityRepository.MAX_PAIRED_CAMERAS})")
+                            Text(stringResource(R.string.home_pair_another_camera, pairedCameras.size, SecurityRepository.MAX_PAIRED_CAMERAS))
                         }
                     }
                 }
@@ -450,7 +452,7 @@ fun HomeScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showSelectCameraDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )

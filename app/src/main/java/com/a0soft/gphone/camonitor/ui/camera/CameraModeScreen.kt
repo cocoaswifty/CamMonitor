@@ -28,9 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.a0soft.gphone.camonitor.R
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -250,7 +252,7 @@ fun CameraModeScreen(
                                     .background(StatusLive, CircleShape)
                             )
                             Text(
-                                text = "LIVE 720p@20fps",
+                                text = stringResource(R.string.camera_live_badge),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = StatusLive
                             )
@@ -268,7 +270,7 @@ fun CameraModeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Text("$activeViewers/2 Viewers", style = MaterialTheme.typography.labelMedium)
+                                    Text(stringResource(R.string.camera_viewers_count, activeViewers, 2), style = MaterialTheme.typography.labelMedium)
                                 }
                             }
 
@@ -305,7 +307,7 @@ fun CameraModeScreen(
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, tint = Color.White)
                                 Text(
-                                    text = "Intercom Live (Viewer Speaking)",
+                                    text = stringResource(R.string.camera_intercom_live),
                                     style = MaterialTheme.typography.labelLarge,
                                     color = Color.White
                                 )
@@ -322,7 +324,7 @@ fun CameraModeScreen(
                     TextButton(onClick = { showRenameDialog = true }) {
                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Rename Camera")
+                        Text(stringResource(R.string.dialog_rename_camera_title))
                     }
                 }
 
@@ -337,7 +339,7 @@ fun CameraModeScreen(
                     ) {
                         Icon(Icons.Default.Bedtime, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Black Screen")
+                        Text(stringResource(R.string.camera_black_screen))
                     }
 
                     Button(
@@ -349,7 +351,7 @@ fun CameraModeScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Exit Camera")
+                        Text(stringResource(R.string.camera_exit_button))
                     }
                 }
             }
@@ -360,12 +362,12 @@ fun CameraModeScreen(
         var tempName by remember { mutableStateOf(cameraName) }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename Camera") },
+            title = { Text(stringResource(R.string.dialog_rename_camera_title)) },
             text = {
                 OutlinedTextField(
                     value = tempName,
                     onValueChange = { if (it.length <= 32) tempName = it },
-                    label = { Text("Camera Name") },
+                    label = { Text(stringResource(R.string.dialog_camera_name_label)) },
                     singleLine = true,
                     supportingText = { Text("${tempName.length}/32") }
                 )
@@ -382,12 +384,12 @@ fun CameraModeScreen(
                         showRenameDialog = false
                     }
                 ) {
-                    Text("Save")
+                    Text(stringResource(R.string.action_save))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -415,13 +417,13 @@ private fun CameraPausedStandbyView(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Camera Paused",
+            text = stringResource(R.string.camera_paused_title),
             style = MaterialTheme.typography.headlineMedium,
             color = Color.White
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "No viewers connected for 1 minute. Camera sensor stopped to preserve battery. Standby mode active — camera will automatically wake up when a viewer connects.",
+            text = stringResource(R.string.camera_paused_description),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -431,14 +433,14 @@ private fun CameraPausedStandbyView(
             onClick = onResume,
             modifier = Modifier.fillMaxWidth(0.8f)
         ) {
-            Text("Start Camera Mode")
+            Text(stringResource(R.string.start_camera_mode))
         }
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(
             onClick = onExit,
             modifier = Modifier.fillMaxWidth(0.8f)
         ) {
-            Text("Exit Camera Mode")
+            Text(stringResource(R.string.exit_camera_mode))
         }
     }
 }
