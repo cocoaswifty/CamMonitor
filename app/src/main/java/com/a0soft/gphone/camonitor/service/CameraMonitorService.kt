@@ -360,6 +360,23 @@ class CameraMonitorService : Service() {
                 _isPttReceiving.value = false
                 app.webRtcManager.onPttCommand(peerId, false)
             }
+            is ControlCommand.SetNightMode -> {
+                val setting = try {
+                    com.a0soft.gphone.camonitor.data.model.NightModeSetting.valueOf(cmd.mode)
+                } catch (e: Exception) {
+                    com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO
+                }
+                app.webRtcManager.setNightModeSetting(setting)
+                app.webRtcManager.broadcastDataChannelCommand(
+                    ControlCommand.NightModeReport(
+                        mode = setting.name,
+                        isNightActive = app.webRtcManager.isNightModeActive.value
+                    )
+                )
+            }
+            is ControlCommand.NightModeReport -> {
+                // Not handled by camera sender
+            }
             is ControlCommand.Rename -> {
                 // Not handled by sender
             }
@@ -376,6 +393,12 @@ class CameraMonitorService : Service() {
                 val currentName = app.securityRepository.getDeviceName()
                 app.webRtcManager.broadcastDataChannelCommand(
                     ControlCommand.Rename(currentName)
+                )
+                app.webRtcManager.broadcastDataChannelCommand(
+                    ControlCommand.NightModeReport(
+                        mode = app.webRtcManager.nightModeSetting.value.name,
+                        isNightActive = app.webRtcManager.isNightModeActive.value
+                    )
                 )
             }
         }

@@ -228,6 +228,12 @@ sealed class SignalingMessage {
 /**
  * Control commands sent over WebRTC DataChannel.
  */
+enum class NightModeSetting {
+    AUTO,
+    NIGHT,
+    NORMAL
+}
+
 sealed class ControlCommand {
     data class Torch(val enabled: Boolean) : ControlCommand()
     object PttStart : ControlCommand()
@@ -235,6 +241,8 @@ sealed class ControlCommand {
     data class Rename(val name: String) : ControlCommand()
     data class Battery(val percentage: Int, val isCharging: Boolean) : ControlCommand()
     object QueryBattery : ControlCommand()
+    data class SetNightMode(val mode: String) : ControlCommand()
+    data class NightModeReport(val mode: String, val isNightActive: Boolean) : ControlCommand()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -255,6 +263,15 @@ sealed class ControlCommand {
                 json.put("charging", isCharging)
             }
             is QueryBattery -> json.put("cmd", "QUERY_BATTERY")
+            is SetNightMode -> {
+                json.put("cmd", "SET_NIGHT_MODE")
+                json.put("mode", mode)
+            }
+            is NightModeReport -> {
+                json.put("cmd", "NIGHT_MODE_REPORT")
+                json.put("mode", mode)
+                json.put("active", isNightActive)
+            }
         }
         return json.toString()
     }
@@ -273,6 +290,11 @@ sealed class ControlCommand {
                         isCharging = json.optBoolean("charging", false)
                     )
                     "QUERY_BATTERY" -> QueryBattery
+                    "SET_NIGHT_MODE" -> SetNightMode(mode = json.getString("mode"))
+                    "NIGHT_MODE_REPORT" -> NightModeReport(
+                        mode = json.getString("mode"),
+                        isNightActive = json.optBoolean("active", false)
+                    )
                     else -> null
                 }
             } catch (e: Exception) {

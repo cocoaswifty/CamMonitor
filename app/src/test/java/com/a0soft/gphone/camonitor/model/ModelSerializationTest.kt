@@ -111,6 +111,17 @@ class ModelSerializationTest {
         val queryBattery = ControlCommand.QueryBattery
         val parsedQueryBattery = ControlCommand.fromJson(queryBattery.toJson())
         assertEquals(ControlCommand.QueryBattery, parsedQueryBattery)
+
+        val setNightMode = ControlCommand.SetNightMode(mode = "NIGHT")
+        val parsedSetNightMode = ControlCommand.fromJson(setNightMode.toJson())
+        assertTrue(parsedSetNightMode is ControlCommand.SetNightMode)
+        assertEquals("NIGHT", (parsedSetNightMode as ControlCommand.SetNightMode).mode)
+
+        val nightReport = ControlCommand.NightModeReport(mode = "AUTO", isNightActive = true)
+        val parsedNightReport = ControlCommand.fromJson(nightReport.toJson())
+        assertTrue(parsedNightReport is ControlCommand.NightModeReport)
+        assertEquals("AUTO", (parsedNightReport as ControlCommand.NightModeReport).mode)
+        assertTrue(parsedNightReport.isNightActive)
     }
 
     @Test

@@ -62,6 +62,7 @@ fun CameraModeScreen(
     var isPttReceiving by remember { mutableStateOf(false) }
     val activeViewers by app.webRtcManager.activeViewersCount.collectAsState()
     val isTorchOn by app.torchManager.isTorchOn.collectAsState()
+    val isNightModeActive by app.webRtcManager.isNightModeActive.collectAsState()
 
     var isBlackScreenActive by remember { mutableStateOf(false) }
     var idleSeconds by remember { mutableStateOf(0) }
@@ -271,6 +272,32 @@ fun CameraModeScreen(
                                 ) {
                                     Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Text(stringResource(R.string.camera_viewers_count, activeViewers, 2), style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+
+                            // Night mode badge
+                            if (isNightModeActive) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Nightlight,
+                                            contentDescription = stringResource(R.string.camera_night_mode_active),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            stringResource(R.string.camera_night_mode_active),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
                                 }
                             }
 

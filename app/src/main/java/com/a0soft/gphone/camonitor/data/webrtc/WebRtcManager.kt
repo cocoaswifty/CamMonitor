@@ -96,10 +96,27 @@ class WebRtcManager(private val context: Context) {
     @Volatile
     private var isCameraCapturing = false
     var onCameraUnexpectedClosed: (() -> Unit)? = null
+    private var cameraXCapturer: com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer? = null
+
+    private val _isNightModeActive = MutableStateFlow(false)
+    val isNightModeActive: StateFlow<Boolean> = _isNightModeActive.asStateFlow()
+
+    private val _nightModeSetting = MutableStateFlow(com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO)
+    val nightModeSetting: StateFlow<com.a0soft.gphone.camonitor.data.model.NightModeSetting> = _nightModeSetting.asStateFlow()
+
+    val isNightExtensionSupported: Boolean
+        get() = cameraXCapturer?.isNightExtensionSupported ?: false
+
+    fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {
+        _nightModeSetting.value = setting
+        cameraXCapturer?.setNightModeSetting(setting)
+    }
 
     private fun releaseCameraHardwareOnly() {
         try {
             isCameraCapturing = false
+            _isNightModeActive.value = false
+            cameraXCapturer = null
             videoCapturer?.stopCapture()
             videoCapturer?.dispose()
             videoCapturer = null
@@ -120,14 +137,6 @@ class WebRtcManager(private val context: Context) {
     fun startCameraCapture(width: Int = 1280, height: Int = 720, fps: Int = 20) {
         val factory = peerConnectionFactory ?: return
 
-        // Unbind any dangling CameraX session that could lock or evict the camera hardware
-        try {
-            val future = androidx.camera.lifecycle.ProcessCameraProvider.getInstance(context)
-            if (future.isDone) {
-                future.get().unbindAll()
-            }
-        } catch (_: Exception) {}
-
         if (localVideoTrack != null && isCameraCapturing) return // Already running healthy
 
         if (localVideoTrack != null && !isCameraCapturing) {
@@ -135,17 +144,8 @@ class WebRtcManager(private val context: Context) {
             releaseCameraHardwareOnly()
         }
 
-        val enumerator = Camera2Enumerator(context)
-        val deviceNames = enumerator.deviceNames
-        val backCameraName = deviceNames.firstOrNull { enumerator.isBackFacing(it) } ?: deviceNames.firstOrNull()
-
-        if (backCameraName == null) {
-            AppLogger.e(tag, "No camera found on device")
-            return
-        }
-
-        val capturer = enumerator.createCapturer(backCameraName, object : CameraVideoCapturer.CameraEventsHandler {
-            override fun onCameraError(errorDescription: String) {
+        val capturer = com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer(context, preferNightMode = true).apply {
+            onCameraError = { errorDescription ->
                 AppLogger.e(tag, "Camera error: $errorDescription")
                 val wasCapturing = isCameraCapturing
                 isCameraCapturing = false
@@ -153,41 +153,29 @@ class WebRtcManager(private val context: Context) {
                     onCameraUnexpectedClosed?.invoke()
                 }
             }
-            override fun onCameraDisconnected() {
-                AppLogger.w(tag, "Camera disconnected")
-                val wasCapturing = isCameraCapturing
-                isCameraCapturing = false
-                if (wasCapturing) {
-                    onCameraUnexpectedClosed?.invoke()
-                }
+            onNightModeChanged = { active ->
+                _isNightModeActive.value = active
+                broadcastDataChannelCommand(
+                    ControlCommand.NightModeReport(
+                        mode = _nightModeSetting.value.name,
+                        isNightActive = active
+                    )
+                )
             }
-            override fun onCameraFreezed(errorDescription: String) {
-                AppLogger.e(tag, "Camera freezed: $errorDescription")
-            }
-            override fun onCameraOpening(cameraName: String) {
-                AppLogger.i(tag, "Camera opening: $cameraName")
-            }
-            override fun onFirstFrameAvailable() {
-                AppLogger.i(tag, "First camera frame available from hardware")
-                isCameraCapturing = true
-            }
-            override fun onCameraClosed() {
-                AppLogger.i(tag, "Camera closed (wasCapturing=$isCameraCapturing)")
-                val wasCapturing = isCameraCapturing
-                isCameraCapturing = false
-                if (wasCapturing) {
-                    onCameraUnexpectedClosed?.invoke()
-                }
-            }
-        })
+        }
+        capturer.setNightModeSetting(_nightModeSetting.value)
+        cameraXCapturer = capturer
+        _isNightModeActive.value = capturer.isNightModeActive
         videoCapturer = capturer
 
-        surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
+        val helper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
+        surfaceTextureHelper = helper
         val vSource = factory.createVideoSource(capturer.isScreencast)
         videoSource = vSource
 
-        capturer.initialize(surfaceTextureHelper, context, vSource.capturerObserver)
+        capturer.initialize(helper, context, vSource.capturerObserver)
         capturer.startCapture(width, height, fps)
+        isCameraCapturing = true
 
         val track = factory.createVideoTrack("CAM_VIDEO_TRACK", vSource).apply {
             setEnabled(true)
@@ -247,6 +235,9 @@ class WebRtcManager(private val context: Context) {
     }
 
     fun setTorch(enabled: Boolean): Boolean {
+        cameraXCapturer?.let {
+            return it.setTorch(enabled)
+        }
         val capturer = videoCapturer ?: return false
         return try {
             val cameraCapturerClass = capturer.javaClass.superclass ?: Class.forName("org.webrtc.CameraCapturer")

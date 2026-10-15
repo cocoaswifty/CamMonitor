@@ -2,8 +2,8 @@
 
 ## 1. Overview
 CamMonitor is a peer-to-peer camera monitoring Android application running across two device roles:
-* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio, supports customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
-* **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, monitors real-time battery percentages & charging statuses of both devices (PA camera & PB viewer), supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
+* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio via CameraX with dynamic Night extension (`ExtensionMode.NIGHT`), ambient light sensor monitoring with debounced hysteresis, customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
+* **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, monitors real-time battery percentages & charging statuses of both devices (PA camera & PB viewer), provides a 3-way Night mode toggle (`Auto` / `Night` / `Normal`), supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
 * **Diagnostics & Logging:** Integrated persistent file-based rolling logger. Logs connection states, WebRTC ICE steps, signaling envelopes, camera lifecycle, and security verifications to local files, complete with an in-app log viewer and export/share feature.
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
@@ -113,7 +113,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * WebRTC media is encrypted end-to-end via DTLS-SRTP.
   * The DTLS certificate fingerprint is embedded within the authenticated and signed SDP offer/answer.
 * **DataChannel Command Authentication:**
-  * Remote commands (`TORCH`, `PTT`, `RENAME`, `BATTERY`, `QUERY_BATTERY`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
+  * Remote commands (`TORCH`, `PTT`, `RENAME`, `BATTERY`, `QUERY_BATTERY`, `SET_NIGHT_MODE`, `NIGHT_MODE_REPORT`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
 
 ### 2.6 Revocation & Unpairing
 * Both devices provide device unpairing options:
@@ -148,13 +148,13 @@ Every signaling envelope sent over the public MQTT broker is structured as:
    * Local & Remote SDP generation and set state (`OfferCreated`, `AnswerApplied`).
    * ICE gathering state, candidate counts (Host, Srflx/STUN), and pair selection.
    * `IceConnectionState` & `PeerConnectionState` transitions (`CHECKING`, `CONNECTED`, `FAILED`, `DISCONNECTED`).
-   * Camera lifecycle events: Camera open, frame encoder initialization, sensor errors, torch toggles.
+   * Camera lifecycle events: Camera open, frame encoder initialization, sensor errors, torch toggles, ambient light sensor readings, and dynamic Night Extension rebinds (`ExtensionMode.NIGHT`).
 3. **Power & App Lifecycle:**
    * Foreground Service startup, shutdown, and notification bindings.
    * OLED Black Screen activations, tap-to-wake events, and 60-second idle countdown triggers.
    * 60s viewer absence camera release triggers.
 4. **DataChannel Messages:**
-   * Inbound and outbound control messages (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`).
+   * Inbound and outbound control messages (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`, `SET_NIGHT_MODE`, `NIGHT_MODE_REPORT`).
 
 ---
 
@@ -281,12 +281,13 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 ### 5.3 Screen 3: Camera Mode (PA - Sender)
 
 #### 5.3.1 Active Streaming View
-* **Background:** Live camera preview (`SurfaceView` / Camera2 preview).
+* **Background:** Live camera preview via CameraX (`CameraXVideoCapturer` delivering to WebRTC `SurfaceTextureHelper`).
 * **Top Status HUD (Semi-transparent dark pill overlays):**
   * **Device Name & Live Badge:** Emerald green pulsating dot + text `"[Live] Living Room Cam (720p@20fps)"`.
   * **Rename Action:** Subtle pencil icon next to name to trigger the Rename Dialog on the fly.
   * **Viewer Count Pill:** Eye icon + text `"1 / 2 Viewers"` (or `"2 / 2 Viewers"`).
   * **Flashlight Status:** Torch icon (lit yellow if active, gray if inactive).
+  * **Night Mode Indicator:** Displays when CameraX `ExtensionMode.NIGHT` is dynamically active.
   * **Intercom Live Banner:** Prominent primary color pill badge with `VolumeUp` icon and text `"Intercom Live (Viewer Speaking)"` displayed automatically with smooth fade-in/out whenever a connected viewer holds the PTT intercom button.
 * **Bottom Control Bar (SurfaceContainer semi-transparent overlay):**
   * `FilledTonalButton`: `"Turn Off Display (OLED Saver)"` $\to$ Manually triggers black screen mode.
@@ -338,6 +339,11 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * **Viewer Battery:** `Icons.Default.Smartphone` + text (e.g., `"Viewer 92%"`).
     * **Color-Coded Alert:** Warning color (`#FF6E6E`) when battery $\le 15\%$ and discharging; appends `⚡` when charging.
 * **Right:**
+  * **Night Mode 3-Way Toggle Button:** Compact capsule button cycling through `Auto` $\to$ `Night` $\to$ `Normal` $\to$ `Auto`.
+    * **Auto (Default):** Uses ambient light sensor (`< 10 lux` activates Night mode, `> 25 lux` returns to Normal). Container: `SecondaryContainer`, Icon: `Icons.Default.BrightnessAuto`.
+    * **Night:** Forces CameraX `ExtensionMode.NIGHT` regardless of ambient light. Container: `PrimaryContainer`, Icon: `Icons.Default.Nightlight`.
+    * **Normal:** Forces standard camera capture mode (Night Extension disabled). Container: `SurfaceContainerHighest`, Icon: `Icons.Default.WbSunny`.
+    * **Protocol:** Tapping dispatches `SET_NIGHT_MODE` command via WebRTC DataChannel; camera rebinds session dynamically and replies with `NIGHT_MODE_REPORT`.
   * **Torch Toggle Button:** Lightbulb/Flash icon. Yellow when PA flashlight is on, outline when off. Tapping sends `TORCH` command via DataChannel.
 
 #### 5.4.3 Persistent Floating Battery Badge
@@ -435,17 +441,31 @@ flowchart LR
 ```
 
 ### 6.1 Media Engine & Transport
-* **Core Engine:** WebRTC (Google WebRTC Android SDK).
-* **Video Pipeline:** Camera2 API $\to$ `SurfaceTextureHelper` $\to$ Hardware H.264 / VP8 encoder.
+* **Video Pipeline:** CameraX (`CameraXVideoCapturer`) $\to$ `Preview` Use Case $\to$ WebRTC `SurfaceTextureHelper` $\to$ Hardware H.264 / VP8 encoder.
   * Default resolution: 1280x720 (720p).
   * Target frame rate: 20 FPS.
   * Target bitrate: ~1.5 Mbps, dynamic down to 500 Kbps on packet loss.
+  * **Dynamic Night Mode Extension (`ExtensionMode.NIGHT`):**
+    * Integrates Jetpack CameraX `ExtensionsManager` to detect vendor hardware night-sight capabilities (`extensionsManager.isExtensionAvailable(cameraSelector, ExtensionMode.NIGHT)`).
+    * Supports dynamic session rebinding between Standard `CameraSelector` and Night `CameraSelector` on the fly without tearing down or renegotiating the WebRTC peer connection.
+  * **Ambient Light Sensor & Hysteresis Switching:**
+    * When in `AUTO` mode, device continuously monitors ambient illuminance using `Sensor.TYPE_LIGHT` (`SensorManager`).
+    * Implements strict debounced hysteresis thresholds:
+      * **Lux $< 10$ lux:** Activates Night mode (`ExtensionMode.NIGHT`).
+      * **Lux $> 25$ lux:** Exits Night mode (restores standard camera selector).
+      * **Debounce Window:** 1,500 ms to eliminate jitter or rapid cycling under fluctuating lighting.
+  * **Orientation & Rotation Normalization:**
+    * Maps physical device rotation dynamically:
+      * `Surface.ROTATION_0` (Portrait): Texture rotation $-90^\circ$, Frame rotation $90^\circ$.
+      * `Surface.ROTATION_90` (Landscape): Texture rotation $0^\circ$, Frame rotation $0^\circ$.
+      * `Surface.ROTATION_270` (Reverse Landscape): Texture rotation $180^\circ$, Frame rotation $180^\circ$.
+    * Guarantees incoming frames are displayed 100% upright in both landscape and portrait device orientations.
 * **Audio Pipeline:** 16 kHz mono Opus codec. Hardware Acoustic Echo Cancellation (AEC) and Noise Suppression (NS) enabled.
   * **Bidirectional Audio Intercom:** Viewer device (PB) captures microphone audio and streams it to Camera device (PA) via a dedicated WebRTC `SEND_RECV` audio transceiver.
   * **Audio Routing & Intercom Loudspeaker:** On Android, WebRTC audio streams via `STREAM_VOICE_CALL`. Devices route intercom audio to `AudioDeviceInfo.TYPE_BUILTIN_SPEAKER` (API 31+ `setCommunicationDevice` or legacy `isSpeakerphoneOn`) under `AudioManager.MODE_IN_COMMUNICATION` with volume boosted to $\ge 85\%$ to ensure loud and clear intercom audio from the camera unit.
   * **Push-to-Talk (PTT) Protocol:** PB holds microphone audio track in muted state (`enabled = false`) until the PTT button is held. When held, PB enables the track, transmits audio, and signals `PTT_START` via DataChannel. Releasing PTT immediately mutes the track and signals `PTT_STOP`. PB automatically ducks local speaker playback while transmitting to prevent acoustic feedback.
   * **Camera Intercom UI Notification:** Camera device (PA) displays a live visual banner (`"Intercom Live (Viewer Speaking)"`) when receiving active viewer intercom audio.
-* **Data Channel:** WebRTC `RTCDataChannel` (label: `"control"`, ordered, reliable). Created by PB on the Offer SDP so SCTP negotiation succeeds without renegotiation. Exchanges bidirectional low-latency commands (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`). PA broadcasts battery status immediately upon DataChannel `OPEN` and periodically every 15 seconds; PB queries PA battery on connection.
+* **Data Channel:** WebRTC `RTCDataChannel` (label: `"control"`, ordered, reliable). Created by PB on the Offer SDP so SCTP negotiation succeeds without renegotiation. Exchanges bidirectional low-latency commands (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`, `SET_NIGHT_MODE`, `NIGHT_MODE_REPORT`). PA broadcasts battery and night mode status immediately upon DataChannel `OPEN` and on changes; PB queries status on connection.
 
 ### 6.2 NAT Traversal Scope & Limitations
 * **STUN Server:** `stun:stun.l.google.com:19302`
@@ -572,10 +592,12 @@ flowchart TD
 * `testCameraMode_MaxViewersReached_RejectsThirdConnection()`: Connects 2 viewers $\to$ verifies 3rd connection receives `REJECT_MAX_CAPACITY`.
 * `testCameraMode_Rename_BroadcastsDataChannelCommand()`: Renames camera $\to$ verifies JSON `{"cmd":"RENAME"}` sent to all active viewers.
 
-#### 8.2.3 DataChannel & Control Unit Tests (`test/datachannel/` & `test/model/`)
+#### 8.2.3 DataChannel & Control Unit Tests (`test/datachannel/`, `test/camera/`, & `test/model/`)
 * `testDataChannelCommandParser_ValidTorchCommand_ParsesCorrectly()`: Verifies `TORCH` true/false parsing.
 * `testDataChannelCommandParser_ValidPttCommands_TogglesAudioTrack()`: Verifies `PTT_START` and `PTT_STOP` parse to correct audio states.
 * `testBatteryCommandSerialization()`: Verifies `BATTERY` JSON serialization/deserialization (percentage and charging boolean) and `QUERY_BATTERY`.
+* `testSetNightModeAndReportSerialization()`: Verifies `SET_NIGHT_MODE` (mode string) and `NIGHT_MODE_REPORT` (mode string and active boolean) JSON serialization and deserialization.
+* `testNightModeThreshold_HysteresisAndDebounce()`: Verifies ambient light sensor triggers Night mode when illuminance drops strictly below 10 lux and exits when rising above 25 lux, with 1500ms debounce preventing jitter.
 * `testBatteryHelperFormatPercentage()`: Verifies battery text formatting with charging indicator (e.g., `"85%⚡"`, `"42%"`, `"--%"`).
 * `testRotationState_TapRotateButton_IncrementsBy90Degrees()`: Verifies sequence $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.
 

@@ -123,4 +123,10 @@
     <string name="language_traditional_chinese">繁體中文 (台灣)</string>
     <string name="language_open_system_settings">System Language Settings</string>
     <string name="cd_language_settings">Change Language</string>
+
+    <!-- Camera Low-Light / Night Mode -->
+    <string name="camera_night_mode_active">Night</string>
+    <string name="night_mode_auto">Auto</string>
+    <string name="night_mode_night">Night</string>
+    <string name="night_mode_normal">Normal</string>
 </resources>

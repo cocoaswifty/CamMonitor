@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +32,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.a0soft.gphone.camonitor.CamMonitorApp
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
+import com.a0soft.gphone.camonitor.data.model.NightModeSetting
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import com.a0soft.gphone.camonitor.log.AppLogger
@@ -102,6 +104,8 @@ fun ViewerModeScreen(
     var isTorchActive by remember { mutableStateOf(false) }
     var isPttPressed by remember { mutableStateOf(false) }
     var hasSymmetricNatError by remember { mutableStateOf(false) }
+    var nightModeSetting by remember { mutableStateOf(NightModeSetting.AUTO) }
+    var isCameraNightActive by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     var paBatteryInfo by remember { mutableStateOf<BatteryInfo?>(null) }
@@ -335,6 +339,13 @@ fun ViewerModeScreen(
                 }
                 is ControlCommand.Battery -> {
                     paBatteryInfo = BatteryInfo(cmd.percentage, cmd.isCharging)
+                }
+                is ControlCommand.NightModeReport -> {
+                    try {
+                        nightModeSetting = NightModeSetting.valueOf(cmd.mode)
+                    } catch (_: Exception) {}
+                    isCameraNightActive = cmd.isNightActive
+                    AppLogger.i("ViewerMode", "Received NightModeReport from camera: mode=${cmd.mode}, active=${cmd.isNightActive}")
                 }
                 else -> {}
             }
@@ -600,21 +611,85 @@ fun ViewerModeScreen(
                             }
                         }
 
-                        // Torch Button
-                        IconButton(onClick = {
-                            if (targetCamera != null) {
-                                isTorchActive = !isTorchActive
-                                webRtcManager.sendDataChannelCommand(
-                                    targetCamera.deviceId,
-                                    ControlCommand.Torch(isTorchActive)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Night Mode Toggle Button: Auto -> Night -> Normal -> Auto
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = when (nightModeSetting) {
+                                    NightModeSetting.NIGHT -> MaterialTheme.colorScheme.primaryContainer
+                                    NightModeSetting.AUTO -> if (isCameraNightActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+                                    NightModeSetting.NORMAL -> MaterialTheme.colorScheme.surfaceContainer
+                                },
+                                modifier = Modifier.clickable {
+                                    val nextSetting = when (nightModeSetting) {
+                                        NightModeSetting.AUTO -> NightModeSetting.NIGHT
+                                        NightModeSetting.NIGHT -> NightModeSetting.NORMAL
+                                        NightModeSetting.NORMAL -> NightModeSetting.AUTO
+                                    }
+                                    nightModeSetting = nextSetting
+                                    targetCamera?.let { cam ->
+                                        webRtcManager.sendDataChannelCommand(
+                                            cam.deviceId,
+                                            ControlCommand.SetNightMode(nextSetting.name)
+                                        )
+                                    }
+                                    AppLogger.i("ViewerMode", "Toggled night mode to: $nextSetting")
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = when (nightModeSetting) {
+                                            NightModeSetting.AUTO -> Icons.Default.BrightnessAuto
+                                            NightModeSetting.NIGHT -> Icons.Default.Nightlight
+                                            NightModeSetting.NORMAL -> Icons.Default.WbSunny
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = when (nightModeSetting) {
+                                            NightModeSetting.NIGHT -> MaterialTheme.colorScheme.primary
+                                            NightModeSetting.AUTO -> if (isCameraNightActive) MaterialTheme.colorScheme.primary else Color.White
+                                            NightModeSetting.NORMAL -> Color.White
+                                        }
+                                    )
+                                    Text(
+                                        text = when (nightModeSetting) {
+                                            NightModeSetting.AUTO -> stringResource(R.string.night_mode_auto)
+                                            NightModeSetting.NIGHT -> stringResource(R.string.night_mode_night)
+                                            NightModeSetting.NORMAL -> stringResource(R.string.night_mode_normal)
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = when (nightModeSetting) {
+                                            NightModeSetting.NIGHT -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            NightModeSetting.AUTO -> if (isCameraNightActive) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
+                                            NightModeSetting.NORMAL -> Color.White
+                                        }
+                                    )
+                                }
+                            }
+
+                            // Torch Button
+                            IconButton(onClick = {
+                                if (targetCamera != null) {
+                                    isTorchActive = !isTorchActive
+                                    webRtcManager.sendDataChannelCommand(
+                                        targetCamera.deviceId,
+                                        ControlCommand.Torch(isTorchActive)
+                                    )
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = if (isTorchActive) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                                    contentDescription = stringResource(R.string.cd_torch),
+                                    tint = if (isTorchActive) MaterialTheme.colorScheme.primary else Color.White
                                 )
                             }
-                        }) {
-                            Icon(
-                                imageVector = if (isTorchActive) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                                contentDescription = stringResource(R.string.cd_torch),
-                                tint = if (isTorchActive) MaterialTheme.colorScheme.primary else Color.White
-                            )
                         }
                     }
                 }
