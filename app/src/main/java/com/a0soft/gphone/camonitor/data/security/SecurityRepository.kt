@@ -46,6 +46,8 @@ interface SecurityRepository {
     // Preferences / Settings
     fun isViewerAudioPlaybackEnabled(): Boolean
     fun setViewerAudioPlaybackEnabled(enabled: Boolean)
+    fun getNightModeSetting(): com.a0soft.gphone.camonitor.data.model.NightModeSetting = com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO
+    fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {}
 }
 
 class DefaultSecurityRepository(
@@ -331,6 +333,21 @@ class DefaultSecurityRepository(
     override fun setViewerAudioPlaybackEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("viewer_audio_playback_enabled", enabled).apply()
         AppLogger.i("SecurityRepository", "Viewer audio playback enabled: $enabled")
+    }
+
+    override fun getNightModeSetting(): com.a0soft.gphone.camonitor.data.model.NightModeSetting {
+        val name = prefs.getString("night_mode_setting", com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO.name)
+            ?: com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO.name
+        return try {
+            com.a0soft.gphone.camonitor.data.model.NightModeSetting.valueOf(name)
+        } catch (_: Exception) {
+            com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO
+        }
+    }
+
+    override fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {
+        prefs.edit().putString("night_mode_setting", setting.name).apply()
+        AppLogger.i("SecurityRepository", "Night mode setting persisted: $setting")
     }
 
     private fun cleanOldNonces(now: Long) {

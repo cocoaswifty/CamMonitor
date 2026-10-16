@@ -125,7 +125,13 @@ class WebRtcManager(private val context: Context) {
     private val _isNightModeActive = MutableStateFlow(false)
     val isNightModeActive: StateFlow<Boolean> = _isNightModeActive.asStateFlow()
 
-    private val _nightModeSetting = MutableStateFlow(com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO)
+    private val _nightModeSetting = MutableStateFlow(
+        try {
+            com.a0soft.gphone.camonitor.CamMonitorApp.instance.securityRepository.getNightModeSetting()
+        } catch (_: Exception) {
+            com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO
+        }
+    )
     val nightModeSetting: StateFlow<com.a0soft.gphone.camonitor.data.model.NightModeSetting> = _nightModeSetting.asStateFlow()
 
     val isNightExtensionSupported: Boolean
@@ -134,6 +140,11 @@ class WebRtcManager(private val context: Context) {
     fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {
         _nightModeSetting.value = setting
         cameraXCapturer?.setNightModeSetting(setting)
+        try {
+            com.a0soft.gphone.camonitor.CamMonitorApp.instance.securityRepository.setNightModeSetting(setting)
+        } catch (e: Exception) {
+            AppLogger.w(tag, "Failed to persist night mode setting: ${e.message}")
+        }
     }
 
     private fun releaseCameraHardwareOnly() {
@@ -499,6 +510,18 @@ class WebRtcManager(private val context: Context) {
                         AppLogger.i(tag, "Sent initial FpsReport on DataChannel open to $peerId: $fps fps")
                     } catch (e: Exception) {
                         AppLogger.e(tag, "Failed to send initial FpsReport command", e)
+                    }
+
+                    try {
+                        val modeCmd = ControlCommand.NightModeReport(
+                            mode = _nightModeSetting.value.name,
+                            isNightActive = _isNightModeActive.value
+                        )
+                        val bytes = modeCmd.toJson().toByteArray(Charsets.UTF_8)
+                        dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), false))
+                        AppLogger.i(tag, "Sent initial NightModeReport on DataChannel open to $peerId: mode=${modeCmd.mode}, active=${modeCmd.isNightActive}")
+                    } catch (e: Exception) {
+                        AppLogger.e(tag, "Failed to send initial NightModeReport command", e)
                     }
                 }
             }

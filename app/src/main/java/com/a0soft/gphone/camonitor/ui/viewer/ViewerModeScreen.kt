@@ -110,7 +110,7 @@ fun ViewerModeScreen(
     var isTorchActive by remember { mutableStateOf(false) }
     var isPttPressed by remember { mutableStateOf(false) }
     var hasSymmetricNatError by remember { mutableStateOf(false) }
-    var nightModeSetting by remember { mutableStateOf(NightModeSetting.AUTO) }
+    var nightModeSetting by remember { mutableStateOf(securityRepo.getNightModeSetting()) }
     var isCameraNightActive by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -353,7 +353,9 @@ fun ViewerModeScreen(
                 }
                 is ControlCommand.NightModeReport -> {
                     try {
-                        nightModeSetting = NightModeSetting.valueOf(cmd.mode)
+                        val mode = NightModeSetting.valueOf(cmd.mode)
+                        nightModeSetting = mode
+                        securityRepo.setNightModeSetting(mode)
                     } catch (_: Exception) {}
                     isCameraNightActive = cmd.isNightActive
                     AppLogger.i("ViewerMode", "Received NightModeReport from camera: mode=${cmd.mode}, active=${cmd.isNightActive}")
@@ -637,6 +639,7 @@ fun ViewerModeScreen(
                                         NightModeSetting.NORMAL -> NightModeSetting.AUTO
                                     }
                                     nightModeSetting = nextSetting
+                                    securityRepo.setNightModeSetting(nextSetting)
                                     targetCamera?.let { cam ->
                                         webRtcManager.sendDataChannelCommand(
                                             cam.deviceId,

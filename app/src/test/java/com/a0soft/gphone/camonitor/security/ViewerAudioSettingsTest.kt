@@ -43,6 +43,14 @@ class TestSecurityRepository : SecurityRepository {
     override fun setViewerAudioPlaybackEnabled(enabled: Boolean) {
         audioPlaybackEnabled = enabled
     }
+
+    private var nightModeSetting = com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO
+
+    override fun getNightModeSetting(): com.a0soft.gphone.camonitor.data.model.NightModeSetting = nightModeSetting
+
+    override fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {
+        nightModeSetting = setting
+    }
 }
 
 class ViewerAudioSettingsTest {
@@ -71,5 +79,34 @@ class ViewerAudioSettingsTest {
         // Turn off audio
         repository.setViewerAudioPlaybackEnabled(false)
         assertFalse("Viewer audio playback should be disabled after toggling off", repository.isViewerAudioPlaybackEnabled())
+    }
+
+    @Test
+    fun defaultNightModeSetting_isAuto() {
+        org.junit.Assert.assertEquals(
+            com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO,
+            repository.getNightModeSetting()
+        )
+    }
+
+    @Test
+    fun setNightModeSetting_persistsState() {
+        repository.setNightModeSetting(com.a0soft.gphone.camonitor.data.model.NightModeSetting.NIGHT)
+        org.junit.Assert.assertEquals(
+            com.a0soft.gphone.camonitor.data.model.NightModeSetting.NIGHT,
+            repository.getNightModeSetting()
+        )
+
+        repository.setNightModeSetting(com.a0soft.gphone.camonitor.data.model.NightModeSetting.NORMAL)
+        org.junit.Assert.assertEquals(
+            com.a0soft.gphone.camonitor.data.model.NightModeSetting.NORMAL,
+            repository.getNightModeSetting()
+        )
+
+        repository.setNightModeSetting(com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO)
+        org.junit.Assert.assertEquals(
+            com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO,
+            repository.getNightModeSetting()
+        )
     }
 }
