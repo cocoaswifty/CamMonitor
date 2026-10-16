@@ -36,11 +36,11 @@
     <string name="home_viewers_paired_ready">%1$d viewers paired (broadcasting ready)</string>
     <string name="home_camera_name_prefix">Camera Name: %1$s</string>
     <string name="home_paired_viewers_count">Paired Viewers (%1$d/%2$d)</string>
-    <string name="home_pair_viewer_button">+ Pair Viewer</string>
+    <string name="home_pair_viewer_button">Pair Viewer</string>
     <string name="home_no_cameras_paired">No paired camera (tap to pair)</string>
     <string name="home_cameras_paired_choose">%1$d cameras paired (tap to choose)</string>
     <string name="home_paired_cameras_count">Paired Cameras (%1$d/%2$d)</string>
-    <string name="home_pair_camera_button">+ Pair Camera</string>
+    <string name="home_pair_camera_button">Pair Camera</string>
     <string name="home_pair_another_camera">Pair Another Camera (%1$d/%2$d)</string>
     <string name="dialog_select_camera_title">Select Camera to View</string>
     <string name="dialog_choose_camera_stream">Choose which camera stream to view:</string>

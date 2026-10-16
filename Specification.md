@@ -210,7 +210,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
      * Current Camera Name Pill: e.g. `"Camera Name: Living Room Cam"` with edit pencil icon button.
      * Paired Viewers Summary Row:
        * Label: `"Paired Viewers (<count>/2)"`.
-       * Action: `"+ Pair Viewer"` button (visible if count $< 2$) $\to$ Launches QR code display.
+       * Action: `"Pair Viewer"` button with `+` icon (visible if count $< 2$) $\to$ Launches QR code display.
      * Click Action:
        * If 0 viewers: Navigates to Screen 5.2.1 (Camera Pairing QR Display).
        * If $\ge 1$ viewers: Directly starts Camera Mode streaming.
@@ -223,7 +223,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
        * $>1$ paired cameras: `"<N> cameras paired (tap to choose)"`.
      * Paired Cameras Summary Row:
        * Label: `"Paired Cameras (<count>/8)"`.
-       * Action: `"+ Pair Camera"` button (visible if count $< 8$).
+       * Action: `"Pair Camera"` button with `+` icon (visible if count $< 8$).
      * Click Action:
        * If 0 cameras: Navigates to Screen 5.2.2 (Viewer Pairing QR Scanner).
        * If 1 camera: Directly launches Viewer Mode targeting that camera.

@@ -36,11 +36,11 @@
     <string name="home_viewers_paired_ready">%1$d 個觀看端已配對（可隨時串流）</string>
     <string name="home_camera_name_prefix">鏡頭名稱：%1$s</string>
     <string name="home_paired_viewers_count">已配對觀看端 (%1$d/%2$d)</string>
-    <string name="home_pair_viewer_button">+ 配對觀看端</string>
+    <string name="home_pair_viewer_button">配對觀看端</string>
     <string name="home_no_cameras_paired">尚未配對鏡頭（輕觸進行配對）</string>
     <string name="home_cameras_paired_choose">%1$d 個鏡頭已配對（輕觸以選擇）</string>
     <string name="home_paired_cameras_count">已配對鏡頭 (%1$d/%2$d)</string>
-    <string name="home_pair_camera_button">+ 配對鏡頭</string>
+    <string name="home_pair_camera_button">配對鏡頭</string>
     <string name="home_pair_another_camera">配對另一個鏡頭 (%1$d/%2$d)</string>
     <string name="dialog_select_camera_title">選擇要觀看的鏡頭</string>
     <string name="dialog_choose_camera_stream">請選擇欲觀看的鏡頭串流：</string>
