@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Camera Shutter Button -->
+    <path
+        android:pathData="M37,31h8a2,2 0 0,1 2,2v2h-12v-2a2,2 0 0,1 2,-2z"
+        android:fillColor="#FF000000" />
+
+    <!-- Camera Body with Lens Cutout (EvenOdd Fill) -->
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M36,35h12c3,0 5,3 8,4c10,1 16,8 16,17v2c4,-2 7,-2 10,-2v12c0,6.6 -5.4,12 -12,12h-34c-6.6,0 -12,-5.4 -12,-12v-21c0,-6.6 5.4,-12 12,-12z M52,43.5a13.5,13.5 0 1,0 0,27a13.5,13.5 0 1,0 0,-27z M52,48a9,9 0 1,1 0,18a9,9 0 1,1 0,-18z M52,51.5a5.5,5.5 0 1,0 0,11a5.5,5.5 0 1,0 0,-11z"
+        android:fillColor="#FF000000" />
+
+    <!-- Wireless Wave (Inner Arc) -->
+    <path
+        android:pathData="M55,34 A19,19 0 0,1 74,53"
+        android:strokeWidth="4.2"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Wireless Wave (Outer Arc) -->
+    <path
+        android:pathData="M55,27 A26,26 0 0,1 81,53"
+        android:strokeWidth="4.2"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+</vector>
