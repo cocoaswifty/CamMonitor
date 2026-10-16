@@ -56,6 +56,20 @@ class WebRtcManager(private val context: Context) {
     private val remoteAudioTracks = mutableMapOf<String, AudioTrack>()
     private var isRemoteAudioEnabled = false
     private var remoteRenderer: SurfaceViewRenderer? = null
+    @Volatile
+    private var remoteVideoRotationDegrees: Int = 0
+
+    private val remoteVideoSink = VideoSink { frame ->
+        val renderer = remoteRenderer ?: return@VideoSink
+        val userRot = remoteVideoRotationDegrees
+        if (userRot == 0) {
+            renderer.onFrame(frame)
+        } else {
+            val adjustedRotation = ((frame.rotation + userRot) % 360 + 360) % 360
+            val rotatedFrame = VideoFrame(frame.buffer, adjustedRotation, frame.timestampNs)
+            renderer.onFrame(rotatedFrame)
+        }
+    }
 
     // Viewer PTT audio capture state (PB)
     private var viewerAudioSource: AudioSource? = null
@@ -348,16 +362,12 @@ class WebRtcManager(private val context: Context) {
                     AppLogger.i(tag, "Remote VideoTrack received: id=${track.id()}, state=${track.state()}, enabled=${track.enabled()}")
                     track.setEnabled(true)
                     remoteVideoTrack?.let { oldTrack ->
-                        remoteRenderer?.let { r -> oldTrack.removeSink(r) }
+                        oldTrack.removeSink(remoteVideoSink)
                     }
                     remoteVideoTrack = track
-                    remoteRenderer?.let { r ->
-                        track.removeSink(r)
-                        track.addSink(r)
-                        AppLogger.i(tag, "Attached remote VideoTrack to remoteRenderer")
-                    } ?: run {
-                        AppLogger.w(tag, "Remote VideoTrack received, but remoteRenderer is null (waiting for UI attach)")
-                    }
+                    track.removeSink(remoteVideoSink)
+                    track.addSink(remoteVideoSink)
+                    AppLogger.i(tag, "Attached remote VideoTrack to remoteVideoSink (renderer attached=${remoteRenderer != null})")
                 } else if (track is AudioTrack) {
                     AppLogger.i(tag, "Remote AudioTrack received from $peerId: id=${track.id()}, state=${track.state()}")
                     remoteAudioTracks[peerId] = track
@@ -495,12 +505,18 @@ class WebRtcManager(private val context: Context) {
         localVideoTrack?.removeSink(renderer)
     }
 
+    fun setRemoteVideoRotation(degrees: Int) {
+        val normalized = ((degrees % 360) + 360) % 360
+        remoteVideoRotationDegrees = normalized
+        AppLogger.i(tag, "setRemoteVideoRotation: degrees=$degrees, normalized=$normalized")
+    }
+
     fun attachRemoteRenderer(renderer: SurfaceViewRenderer) {
         remoteRenderer = renderer
         remoteVideoTrack?.let { track ->
-            track.removeSink(renderer)
-            track.addSink(renderer)
-            AppLogger.i(tag, "attachRemoteRenderer: Connected remoteVideoTrack to renderer")
+            track.removeSink(remoteVideoSink)
+            track.addSink(remoteVideoSink)
+            AppLogger.i(tag, "attachRemoteRenderer: Connected remoteVideoTrack to remoteVideoSink")
         }
     }
 
@@ -508,7 +524,7 @@ class WebRtcManager(private val context: Context) {
         if (remoteRenderer == renderer) {
             remoteRenderer = null
         }
-        remoteVideoTrack?.removeSink(renderer)
+        remoteVideoTrack?.removeSink(remoteVideoSink)
     }
 
     fun setRemoteAudioEnabled(enabled: Boolean) {
@@ -622,9 +638,7 @@ class WebRtcManager(private val context: Context) {
         }
         dataChannels.remove(peerId)?.dispose()
         peerConnections.remove(peerId)?.dispose()
-        remoteVideoTrack?.let { track ->
-            remoteRenderer?.let { r -> track.removeSink(r) }
-        }
+        remoteVideoTrack?.removeSink(remoteVideoSink)
         remoteVideoTrack = null
         remoteAudioTracks.remove(peerId)
         if (remoteAudioTrack == null || remoteAudioTracks.isEmpty()) {
@@ -645,8 +659,10 @@ class WebRtcManager(private val context: Context) {
         peerConnections.clear()
         _activeViewersCount.value = 0
         localRenderer?.let { r -> localVideoTrack?.removeSink(r) }
-        remoteRenderer?.let { r -> remoteVideoTrack?.removeSink(r) }
+        remoteVideoTrack?.removeSink(remoteVideoSink)
         remoteVideoTrack = null
+        remoteRenderer = null
+        remoteVideoRotationDegrees = 0
         remoteAudioTrack = null
         remoteAudioTracks.clear()
         isRemoteAudioEnabled = false

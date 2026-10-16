@@ -429,30 +429,21 @@ fun ViewerModeScreen(
     ) {
         val containerWidth = maxWidth
         val containerHeight = maxHeight
-        val aspect = videoAspectRatio ?: (16f / 9f)
-
-        val isSwapped = (rotationDegrees.toInt() % 180 != 0)
-        val effectiveAspect = if (isSwapped) (1f / aspect) else aspect
+        val aspect = videoAspectRatio ?: if (rotationDegrees.toInt() % 180 != 0) (9f / 16f) else (16f / 9f)
         val containerAspect = containerWidth / containerHeight
 
-        val (wVis, hVis) = if (isAspectFit) {
-            if (effectiveAspect > containerAspect) {
-                Pair(containerWidth, containerWidth / effectiveAspect)
+        val (viewWidth, viewHeight) = if (isAspectFit) {
+            if (aspect > containerAspect) {
+                Pair(containerWidth, containerWidth / aspect)
             } else {
-                Pair(containerHeight * effectiveAspect, containerHeight)
+                Pair(containerHeight * aspect, containerHeight)
             }
         } else {
-            if (effectiveAspect > containerAspect) {
-                Pair(containerHeight * effectiveAspect, containerHeight)
+            if (aspect > containerAspect) {
+                Pair(containerHeight * aspect, containerHeight)
             } else {
-                Pair(containerWidth, containerWidth / effectiveAspect)
+                Pair(containerWidth, containerWidth / aspect)
             }
-        }
-
-        val (viewWidth, viewHeight) = if (isSwapped) {
-            Pair(hVis, wVis)
-        } else {
-            Pair(wVis, hVis)
         }
 
         // Video Viewport with dynamic aspect-ratio and rotation support
@@ -483,11 +474,13 @@ fun ViewerModeScreen(
                     setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
                     setEnableHardwareScaler(true)
                     surfaceRenderer = this
+                    webRtcManager.setRemoteVideoRotation(rotationDegrees.toInt())
                     webRtcManager.attachRemoteRenderer(this)
                 }
             },
             update = { renderer ->
                 surfaceRenderer = renderer
+                webRtcManager.setRemoteVideoRotation(rotationDegrees.toInt())
                 webRtcManager.attachRemoteRenderer(renderer)
                 renderer.setScalingType(
                     if (isAspectFit) RendererCommon.ScalingType.SCALE_ASPECT_FIT
@@ -499,9 +492,7 @@ fun ViewerModeScreen(
                 renderer.release()
                 surfaceRenderer = null
             },
-            modifier = Modifier
-                .size(viewWidth, viewHeight)
-                .graphicsLayer { rotationZ = rotationDegrees }
+            modifier = Modifier.size(viewWidth, viewHeight)
         )
 
         // Overlay Controls
@@ -703,8 +694,15 @@ fun ViewerModeScreen(
                     // Rotate 90 Degrees Button
                     FilledTonalIconButton(
                         onClick = {
-                            rotationDegrees = (rotationDegrees + 90f) % 360f
-                            AppLogger.i("ViewerMode", "Rotate button clicked: new rotationDegrees=$rotationDegrees")
+                            val newRotation = (rotationDegrees + 90f) % 360f
+                            rotationDegrees = newRotation
+                            videoAspectRatio?.let { currentAspect ->
+                                if (currentAspect > 0f) {
+                                    videoAspectRatio = 1f / currentAspect
+                                }
+                            }
+                            webRtcManager.setRemoteVideoRotation(newRotation.toInt())
+                            AppLogger.i("ViewerMode", "Rotate button clicked: new rotationDegrees=$newRotation")
                         }
                     ) {
                         Icon(Icons.Default.Rotate90DegreesCw, contentDescription = stringResource(R.string.rotate_90))
