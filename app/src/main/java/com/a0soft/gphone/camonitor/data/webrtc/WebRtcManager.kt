@@ -50,6 +50,16 @@ class WebRtcManager(private val context: Context) {
     private val _activeViewersCount = MutableStateFlow(0)
     val activeViewersCount: StateFlow<Int> = _activeViewersCount.asStateFlow()
 
+    private val _streamFps = MutableStateFlow(20)
+    val streamFps: StateFlow<Int> = _streamFps.asStateFlow()
+
+    private val _remoteStreamFps = MutableStateFlow(20)
+    val remoteStreamFps: StateFlow<Int> = _remoteStreamFps.asStateFlow()
+
+    fun setRemoteFps(fps: Int) {
+        _remoteStreamFps.value = fps
+    }
+
     // Receiver state (PB & PA)
     private var remoteVideoTrack: VideoTrack? = null
     private var remoteAudioTrack: AudioTrack? = null
@@ -176,6 +186,14 @@ class WebRtcManager(private val context: Context) {
                     )
                 )
             }
+            onFpsDetermined = { fps ->
+                _streamFps.value = fps
+                videoSource?.adaptOutputFormat(width, height, fps)
+                peerConnections.values.forEach { pc ->
+                    configureVideoSenders(pc)
+                }
+                broadcastDataChannelCommand(ControlCommand.FpsReport(fps))
+            }
         }
         capturer.setNightModeSetting(_nightModeSetting.value)
         cameraXCapturer = capturer
@@ -186,10 +204,12 @@ class WebRtcManager(private val context: Context) {
         surfaceTextureHelper = helper
         val vSource = factory.createVideoSource(capturer.isScreencast)
         videoSource = vSource
+        vSource.adaptOutputFormat(width, height, capturer.finalFps)
 
         capturer.initialize(helper, context, vSource.capturerObserver)
         capturer.startCapture(width, height, fps)
         isCameraCapturing = true
+        _streamFps.value = capturer.finalFps
 
         val track = factory.createVideoTrack("CAM_VIDEO_TRACK", vSource).apply {
             setEnabled(true)
@@ -217,13 +237,42 @@ class WebRtcManager(private val context: Context) {
                 val videoSender = pc.senders.firstOrNull { it.track()?.kind() == "video" }
                 if (videoSender != null) {
                     videoSender.setTrack(vTrack, false)
+                    configureVideoSender(videoSender)
                 } else {
-                    pc.addTrack(vTrack, listOf("CAM_STREAM"))
+                    val sender = pc.addTrack(vTrack, listOf("CAM_STREAM"))
+                    configureVideoSender(sender)
                 }
             }
         }
 
         AppLogger.i(tag, "Camera capture started: ${width}x${height}@${fps}fps (back camera)")
+    }
+
+    fun configureVideoSender(sender: RtpSender?) {
+        sender ?: return
+        try {
+            val parameters = sender.parameters
+            parameters.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
+            if (parameters.encodings != null) {
+                parameters.encodings.forEach { encoding ->
+                    encoding.scaleResolutionDownBy = 1.0
+                    encoding.maxFramerate = _streamFps.value
+                    encoding.minBitrateBps = 800_000
+                    encoding.maxBitrateBps = 2_500_000
+                }
+            }
+            val result = sender.setParameters(parameters)
+            AppLogger.i(tag, "Configured video sender parameters: degradationPreference=MAINTAIN_RESOLUTION, maxFramerate=${_streamFps.value}, result=$result")
+        } catch (e: Exception) {
+            AppLogger.w(tag, "Failed to configure video sender parameters: ${e.message}")
+        }
+    }
+
+    fun configureVideoSenders(pc: PeerConnection?) {
+        pc ?: return
+        pc.senders?.filter { it.track()?.kind() == "video" }?.forEach { sender ->
+            configureVideoSender(sender)
+        }
     }
 
     fun stopCameraCapture() {
@@ -402,7 +451,10 @@ class WebRtcManager(private val context: Context) {
 
         if (pc != null) {
             // Attach local tracks if streaming as sender (PA)
-            localVideoTrack?.let { pc.addTrack(it, listOf("CAM_STREAM")) }
+            localVideoTrack?.let { vTrack ->
+                val sender = pc.addTrack(vTrack, listOf("CAM_STREAM"))
+                configureVideoSender(sender)
+            }
             localAudioTrack?.let { pc.addTrack(it, listOf("CAM_STREAM")) }
 
             peerConnections[peerId] = pc
@@ -438,6 +490,16 @@ class WebRtcManager(private val context: Context) {
                     } catch (e: Exception) {
                         AppLogger.e(tag, "Failed to send initial Battery command", e)
                     }
+
+                    try {
+                        val fps = _streamFps.value
+                        val cmd = ControlCommand.FpsReport(fps)
+                        val bytes = cmd.toJson().toByteArray(Charsets.UTF_8)
+                        dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), false))
+                        AppLogger.i(tag, "Sent initial FpsReport on DataChannel open to $peerId: $fps fps")
+                    } catch (e: Exception) {
+                        AppLogger.e(tag, "Failed to send initial FpsReport command", e)
+                    }
                 }
             }
         }
@@ -457,6 +519,9 @@ class WebRtcManager(private val context: Context) {
                 val cmd = ControlCommand.fromJson(jsonStr)
                 if (cmd != null) {
                     AppLogger.i(tag, "Received DataChannel command from $peerId: $jsonStr")
+                    if (cmd is ControlCommand.FpsReport) {
+                        _remoteStreamFps.value = cmd.fps
+                    }
                     _dataChannelCommands.tryEmit(Pair(peerId, cmd))
                 }
             }

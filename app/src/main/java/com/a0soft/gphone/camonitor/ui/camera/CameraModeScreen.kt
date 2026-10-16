@@ -63,6 +63,7 @@ fun CameraModeScreen(
     val activeViewers by app.webRtcManager.activeViewersCount.collectAsState()
     val isTorchOn by app.torchManager.isTorchOn.collectAsState()
     val isNightModeActive by app.webRtcManager.isNightModeActive.collectAsState()
+    val streamFps by app.webRtcManager.streamFps.collectAsState()
 
     var isBlackScreenActive by remember { mutableStateOf(false) }
     var idleSeconds by remember { mutableStateOf(0) }
@@ -196,7 +197,7 @@ fun CameraModeScreen(
                         )
                         init(app.webRtcManager.eglBase.eglBaseContext, null)
                         setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
-                        setEnableHardwareScaler(true)
+                        setEnableHardwareScaler(false)
                         localSurfaceRenderer = this
                         app.webRtcManager.attachLocalRenderer(this)
                     }
@@ -253,7 +254,7 @@ fun CameraModeScreen(
                                     .background(StatusLive, CircleShape)
                             )
                             Text(
-                                text = stringResource(R.string.camera_live_badge),
+                                text = stringResource(R.string.camera_live_badge, streamFps),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = StatusLive
                             )

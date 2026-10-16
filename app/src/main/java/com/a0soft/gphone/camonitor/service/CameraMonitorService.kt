@@ -295,6 +295,7 @@ class CameraMonitorService : Service() {
             override fun onSetSuccess() {
                 val elapsed = System.currentTimeMillis() - startTime
                 AppLogger.i(tag, "Remote Offer set successfully for $senderId (+${elapsed}ms). Draining buffered ICE candidates and creating Answer...")
+                app.webRtcManager.configureVideoSenders(pc)
                 app.webRtcManager.drainRemoteIceCandidates(senderId)
                 val constraints = MediaConstraints()
                 pc.createAnswer(object : SdpObserver {
@@ -305,9 +306,11 @@ class CameraMonitorService : Service() {
                             override fun onSetSuccess() {
                                 val setLocalElapsed = System.currentTimeMillis() - startTime
                                 AppLogger.i(tag, "Local Answer set successfully (+${setLocalElapsed}ms), transmitting Answer to $senderId")
+                                app.webRtcManager.configureVideoSenders(pc)
                                 val answerMsg = SignalingMessage.Answer(
                                     sdp = answerDesc.description,
-                                    cameraName = app.securityRepository.getDeviceName()
+                                    cameraName = app.securityRepository.getDeviceName(),
+                                    fps = app.webRtcManager.streamFps.value
                                 )
                                 sendSignalingMessageToViewer(senderId, answerMsg)
                             }
@@ -400,6 +403,12 @@ class CameraMonitorService : Service() {
                         isNightActive = app.webRtcManager.isNightModeActive.value
                     )
                 )
+                app.webRtcManager.broadcastDataChannelCommand(
+                    ControlCommand.FpsReport(app.webRtcManager.streamFps.value)
+                )
+            }
+            is ControlCommand.FpsReport -> {
+                // Not handled by sender
             }
         }
     }

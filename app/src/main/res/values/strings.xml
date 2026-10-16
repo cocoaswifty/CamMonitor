@@ -46,7 +46,7 @@
     <string name="dialog_choose_camera_stream">Choose which camera stream to view:</string>
 
     <!-- Camera Mode Screen -->
-    <string name="camera_live_badge">LIVE 720p@20fps</string>
+    <string name="camera_live_badge">LIVE 720p@%1$dfps</string>
     <string name="camera_viewers_count">%1$d/%2$d Viewers</string>
     <string name="camera_intercom_live">Intercom Live (Viewer Speaking)</string>
     <string name="camera_black_screen">Black Screen</string>
@@ -62,7 +62,7 @@
     <string name="viewer_status_waiting_response">Waiting for camera to respond...</string>
     <string name="viewer_status_starting_stream">Starting stream...</string>
     <string name="viewer_status_camera_rejected">Camera Rejected: %1$s</string>
-    <string name="viewer_status_live">Live (720p 20fps)</string>
+    <string name="viewer_status_live">Live (720p %1$dfps)</string>
     <string name="viewer_status_connection_failed">Connection Failed</string>
     <string name="viewer_status_disconnected">Disconnected</string>
     <string name="viewer_camera_battery_prefix">Cam %1$s</string>

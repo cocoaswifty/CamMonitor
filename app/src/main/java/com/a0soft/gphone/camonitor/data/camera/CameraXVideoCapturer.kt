@@ -58,10 +58,50 @@ class CameraXVideoCapturer(
         const val LUX_THRESHOLD_NIGHT_ENTER = 10.0f
         const val LUX_THRESHOLD_NIGHT_EXIT = 25.0f
         const val LIGHT_DEBOUNCE_DELAY_MS = 1500L
+
+        fun selectClosestFps(
+            availablePairs: List<Pair<Int, Int>>,
+            targetFps: Int = 20
+        ): Pair<Int, Int> {
+            if (availablePairs.isEmpty()) return Pair(targetFps, targetFps)
+            val valid = availablePairs.filter { it.first > 0 && it.second >= it.first }
+            if (valid.isEmpty()) return availablePairs[0]
+
+            return valid.minWith(
+                compareBy<Pair<Int, Int>> { kotlin.math.abs(it.second - targetFps) }
+                    .thenBy { it.first }
+            )
+        }
+
+        fun selectClosestSupportedFpsRange(
+            availableRanges: Array<Range<Int>>?,
+            targetFps: Int = 20
+        ): Range<Int> {
+            if (availableRanges.isNullOrEmpty()) {
+                return Range(targetFps, targetFps)
+            }
+            val validRanges = availableRanges.filter {
+                val l = it.lower
+                val u = it.upper
+                l != null && u != null && l > 0 && u >= l
+            }
+            if (validRanges.isEmpty()) return availableRanges[0]
+
+            return validRanges.minWith(
+                compareBy<Range<Int>> { kotlin.math.abs(it.upper - targetFps) }
+                    .thenBy { it.lower }
+            )
+        }
     }
 
     private val tag = "CameraXVideoCapturer"
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    var finalFps: Int = 20
+        private set
+
+    private val _streamFpsFlow = MutableStateFlow(20)
+    val streamFpsFlow: StateFlow<Int> = _streamFpsFlow.asStateFlow()
 
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private var capturerObserver: CapturerObserver? = null
@@ -122,6 +162,7 @@ class CameraXVideoCapturer(
 
     var onNightModeChanged: ((Boolean) -> Unit)? = null
     var onCameraError: ((String) -> Unit)? = null
+    var onFpsDetermined: ((Int) -> Unit)? = null
 
     private val sensorManager by lazy {
         context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -283,12 +324,25 @@ class CameraXVideoCapturer(
             .setTargetRotation(currentTargetRotation)
             .setResolutionSelector(resolutionSelector)
 
+        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+        val backCameraId = cameraManager?.cameraIdList?.firstOrNull { id ->
+            val chars = cameraManager.getCameraCharacteristics(id)
+            chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+        } ?: "0"
+        val chars = cameraManager?.getCameraCharacteristics(backCameraId)
+        val availableFpsRanges = chars?.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+        val selectedFpsRange = selectClosestSupportedFpsRange(availableFpsRanges, lastFramerate)
+        finalFps = selectedFpsRange.upper
+        _streamFpsFlow.value = finalFps
+        onFpsDetermined?.invoke(finalFps)
+        AppLogger.i(tag, "Selected hardware AE FPS range: $selectedFpsRange, finalFps=$finalFps (target=$lastFramerate)")
+
         if (enableNight && !isNightExtensionSupported) {
             AppLogger.i(tag, "Applying Camera2 low-light fallback")
-            configureLowLightFallback(previewBuilder, lastFramerate)
+            configureLowLightFallback(previewBuilder, chars, selectedFpsRange)
+        } else {
+            previewBuilder.setTargetFpsRange(selectedFpsRange)
         }
-
-        previewBuilder.setTargetFrameRate(lastFramerate)
 
         val newPreview = previewBuilder.build()
         this.preview = newPreview
@@ -401,22 +455,17 @@ class CameraXVideoCapturer(
     }
 
     @OptIn(ExperimentalCamera2Interop::class)
-    private fun Preview.Builder.setTargetFrameRate(fps: Int) {
+    private fun Preview.Builder.setTargetFpsRange(fpsRange: Range<Int>) {
         val extender = Camera2Interop.Extender(this)
         extender.setCaptureRequestOption(
             CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-            Range(fps.coerceAtMost(15), fps)
+            fpsRange
         )
     }
 
     @OptIn(ExperimentalCamera2Interop::class)
-    private fun configureLowLightFallback(builder: Preview.Builder, targetFps: Int) {
-        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: return
-        val backCameraId = cameraManager.cameraIdList.firstOrNull { id ->
-            val chars = cameraManager.getCameraCharacteristics(id)
-            chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-        } ?: "0"
-        val chars = cameraManager.getCameraCharacteristics(backCameraId)
+    private fun configureLowLightFallback(builder: Preview.Builder, chars: CameraCharacteristics?, fpsRange: Range<Int>) {
+        if (chars == null) return
         val extender = Camera2Interop.Extender(builder)
 
         // 1. Scene Mode Night
@@ -434,13 +483,9 @@ class CameraXVideoCapturer(
             extender.setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, false)
         }
 
-        // 3. Wide AE FPS Range to maximize sensor exposure integration time in dark scenes
-        val availableFpsRanges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
-        val lowLightFpsRange = availableFpsRanges?.filter { it.upper <= targetFps }
-            ?.minByOrNull { it.lower }
-            ?: Range(7, targetFps)
-        extender.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, lowLightFpsRange)
-        AppLogger.i(tag, "Fallback: Applied low-light AE target FPS range: $lowLightFpsRange")
+        // 3. Hardware-validated AE FPS Range
+        extender.setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, fpsRange)
+        AppLogger.i(tag, "Fallback: Applied hardware-validated AE target FPS range: $fpsRange")
 
         // 4. Optical/Video Stabilization
         val oisModes = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)

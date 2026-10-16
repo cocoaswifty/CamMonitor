@@ -83,6 +83,12 @@ fun ViewerModeScreen(
     var isAspectFit by remember { mutableStateOf(true) }
     var videoAspectRatio by remember { mutableStateOf<Float?>(null) }
     var isControlsVisible by remember { mutableStateOf(true) }
+    val remoteFps by webRtcManager.remoteStreamFps.collectAsState()
+    var streamFps by remember { mutableStateOf(20) }
+
+    LaunchedEffect(remoteFps) {
+        streamFps = remoteFps
+    }
 
     val displayName = cameraName.ifEmpty { stringResource(R.string.camera_default_name) }
     val connectionStatus = when (val s = connectionState) {
@@ -92,7 +98,7 @@ fun ViewerModeScreen(
         ViewerConnectionState.WaitingResponse -> stringResource(R.string.viewer_status_waiting_response)
         ViewerConnectionState.StartingStream -> stringResource(R.string.viewer_status_starting_stream)
         is ViewerConnectionState.Rejected -> stringResource(R.string.viewer_status_camera_rejected, s.reason)
-        ViewerConnectionState.Live -> stringResource(R.string.viewer_status_live)
+        ViewerConnectionState.Live -> stringResource(R.string.viewer_status_live, streamFps)
         ViewerConnectionState.Failed -> stringResource(R.string.viewer_status_connection_failed)
         ViewerConnectionState.Disconnected -> stringResource(R.string.viewer_status_disconnected)
     }
@@ -280,6 +286,11 @@ fun ViewerModeScreen(
                             securityRepo.addPairedDevice(existing.copy(name = newName))
                             AppLogger.i("ViewerMode", "Updated paired camera name from Answer to: $newName")
                         }
+                        msg.fps?.let { newFps ->
+                            streamFps = newFps
+                            webRtcManager.setRemoteFps(newFps)
+                            AppLogger.i("ViewerMode", "Received stream FPS from Answer: $newFps fps")
+                        }
                         retryJob.cancel()
                         val answerDesc = SessionDescription(SessionDescription.Type.ANSWER, msg.sdp)
                         pc.setRemoteDescription(object : SdpObserver {
@@ -346,6 +357,11 @@ fun ViewerModeScreen(
                     } catch (_: Exception) {}
                     isCameraNightActive = cmd.isNightActive
                     AppLogger.i("ViewerMode", "Received NightModeReport from camera: mode=${cmd.mode}, active=${cmd.isNightActive}")
+                }
+                is ControlCommand.FpsReport -> {
+                    streamFps = cmd.fps
+                    webRtcManager.setRemoteFps(cmd.fps)
+                    AppLogger.i("ViewerMode", "Received FpsReport from camera: ${cmd.fps} fps")
                 }
                 else -> {}
             }
@@ -472,7 +488,7 @@ fun ViewerModeScreen(
                         }
                     })
                     setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
-                    setEnableHardwareScaler(true)
+                    setEnableHardwareScaler(false)
                     surfaceRenderer = this
                     webRtcManager.setRemoteVideoRotation(rotationDegrees.toInt())
                     webRtcManager.attachRemoteRenderer(this)

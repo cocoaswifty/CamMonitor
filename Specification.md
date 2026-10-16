@@ -2,7 +2,7 @@
 
 ## 1. Overview
 CamMonitor is a peer-to-peer camera monitoring Android application running across two device roles:
-* **Camera Mode (PA - Sender):** Captures 720p@20fps video and audio via CameraX with dynamic Night extension (`ExtensionMode.NIGHT`) and Camera2 low-light fallback, ambient light sensor monitoring with debounced hysteresis, customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
+* **Camera Mode (PA - Sender):** Captures 720p video (using hardware-supported AE FPS range closest to soft constraint 20fps, e.g. 15–24fps) and audio via CameraX with dynamic Night extension (`ExtensionMode.NIGHT`) and Camera2 low-light fallback, ambient light sensor monitoring with debounced hysteresis, customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
 * **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, monitors real-time battery percentages & charging statuses of both devices (PA camera & PB viewer), provides a 3-way Night mode toggle (`Auto` / `Night` / `Normal`), supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
 * **Diagnostics & Logging:** Integrated persistent file-based rolling logger. Logs connection states, WebRTC ICE steps, signaling envelopes, camera lifecycle, and security verifications to local files, complete with an in-app log viewer and export/share feature.
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
@@ -281,7 +281,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 #### 5.3.1 Active Streaming View
 * **Background:** Live camera preview via CameraX (`CameraXVideoCapturer` delivering to WebRTC `SurfaceTextureHelper`).
 * **Top Status HUD (Semi-transparent dark pill overlays):**
-  * **Device Name & Live Badge:** Emerald green pulsating dot + text `"[Live] Living Room Cam (720p@20fps)"`.
+  * **Device Name & Live Badge:** Emerald green pulsating dot + text `"[Live] Living Room Cam (720p@<fps>fps)"` (reflecting actual negotiated hardware FPS).
   * **Rename Action:** Subtle pencil icon next to name to trigger the Rename Dialog on the fly.
   * **Viewer Count Pill:** Eye icon + text `"1 / 2 Viewers"` (or `"2 / 2 Viewers"`).
   * **Flashlight Status:** Torch icon (lit yellow if active, gray if inactive).
@@ -330,7 +330,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Left:** `IconButton(Icons.Default.ArrowBack)` $\to$ `"Exit Viewer Mode"`.
 * **Center:**
   * **Title:** Camera device name (e.g. `"Living Room Cam"`). Dynamically updates if PA is renamed.
-  * **Subtitle badge:** Status indicator (`"Live (720p 20fps)"`, `"Connecting to camera..."`, `"Disconnected"`, `"Connection Failed"`).
+  * **Subtitle badge:** Status indicator (`"Live (720p <fps>fps)"`, `"Connecting to camera..."`, `"Disconnected"`, `"Connection Failed"`).
   * **Inline Retry Action:** When status is neither `"Live"` nor `"Connecting"`, a compact `"Retry"` button (`FilledTonalButton`) is displayed adjacent to the status badge to allow immediate manual re-triggering.
   * **Battery Status Row:** Dual device battery indicators:
     * **Camera Battery:** `Icons.Default.Videocam` + text (e.g., `"Cam 85%⚡"`).

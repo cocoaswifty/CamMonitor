@@ -9,6 +9,7 @@ import org.junit.Test
 
 class ModelSerializationTest {
 
+
     @Test
     fun testPairingPayloadSerializationAndDeserialization() {
         val original = PairingPayload(
@@ -73,11 +74,12 @@ class ModelSerializationTest {
         assertEquals(answerWithoutName.sdp, parsedAnswerWithoutName?.sdp)
         assertNull(parsedAnswerWithoutName?.cameraName)
 
-        val answerWithName = SignalingMessage.Answer(sdp = "v=0\r\nsdp-content", cameraName = "Kitchen Cam")
+        val answerWithName = SignalingMessage.Answer(sdp = "v=0\r\nsdp-content", cameraName = "Kitchen Cam", fps = 24)
         val parsedAnswerWithName = SignalingMessage.fromJson(answerWithName.toJson()) as? SignalingMessage.Answer
         assertNotNull(parsedAnswerWithName)
         assertEquals(answerWithName.sdp, parsedAnswerWithName?.sdp)
         assertEquals("Kitchen Cam", parsedAnswerWithName?.cameraName)
+        assertEquals(24, parsedAnswerWithName?.fps)
     }
 
     @Test
@@ -122,6 +124,52 @@ class ModelSerializationTest {
         assertTrue(parsedNightReport is ControlCommand.NightModeReport)
         assertEquals("AUTO", (parsedNightReport as ControlCommand.NightModeReport).mode)
         assertTrue(parsedNightReport.isNightActive)
+
+        val fpsReport = ControlCommand.FpsReport(fps = 24)
+        val parsedFpsReport = ControlCommand.fromJson(fpsReport.toJson())
+        assertTrue(parsedFpsReport is ControlCommand.FpsReport)
+        assertEquals(24, (parsedFpsReport as ControlCommand.FpsReport).fps)
+    }
+
+    @Test
+    fun testSelectClosestSupportedFpsRange() {
+        val pixel6Pairs = listOf(
+            Pair(15, 15),
+            Pair(15, 30),
+            Pair(30, 30),
+            Pair(15, 60),
+            Pair(60, 60)
+        )
+        val selectedP6 = com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer.selectClosestFps(pixel6Pairs, targetFps = 20)
+        assertEquals(Pair(15, 15), selectedP6)
+
+        val pixel8Pairs = listOf(
+            Pair(15, 15),
+            Pair(15, 24),
+            Pair(24, 24),
+            Pair(15, 30),
+            Pair(24, 30),
+            Pair(30, 30),
+            Pair(15, 60),
+            Pair(60, 60)
+        )
+        val selectedP8 = com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer.selectClosestFps(pixel8Pairs, targetFps = 20)
+        assertEquals(Pair(15, 24), selectedP8)
+
+        val deviceWith20 = listOf(
+            Pair(15, 20),
+            Pair(20, 20),
+            Pair(15, 30)
+        )
+        val selected20 = com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer.selectClosestFps(deviceWith20, targetFps = 20)
+        assertEquals(Pair(15, 20), selected20)
+
+        val deviceWith30Only = listOf(
+            Pair(15, 30),
+            Pair(30, 30)
+        )
+        val selected30 = com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer.selectClosestFps(deviceWith30Only, targetFps = 20)
+        assertEquals(Pair(15, 30), selected30)
     }
 
     @Test

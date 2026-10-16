@@ -139,7 +139,8 @@ sealed class SignalingMessage {
 
     data class Answer(
         val sdp: String,
-        val cameraName: String? = null
+        val cameraName: String? = null,
+        val fps: Int? = null
     ) : SignalingMessage()
 
     data class IceCandidate(
@@ -175,6 +176,7 @@ sealed class SignalingMessage {
                 json.put("type", "ANSWER")
                 json.put("sdp", sdp)
                 cameraName?.let { json.put("cameraName", it) }
+                fps?.let { json.put("fps", it) }
             }
             is IceCandidate -> {
                 json.put("type", "ICE_CANDIDATE")
@@ -208,7 +210,8 @@ sealed class SignalingMessage {
                     "OFFER" -> Offer(sdp = json.getString("sdp"))
                     "ANSWER" -> Answer(
                         sdp = json.getString("sdp"),
-                        cameraName = json.optString("cameraName").takeIf { it.isNotEmpty() }
+                        cameraName = json.optString("cameraName").takeIf { it.isNotEmpty() },
+                        fps = if (json.has("fps")) json.getInt("fps") else null
                     )
                     "ICE_CANDIDATE" -> IceCandidate(
                         sdpMid = json.getString("sdpMid"),
@@ -243,6 +246,7 @@ sealed class ControlCommand {
     object QueryBattery : ControlCommand()
     data class SetNightMode(val mode: String) : ControlCommand()
     data class NightModeReport(val mode: String, val isNightActive: Boolean) : ControlCommand()
+    data class FpsReport(val fps: Int) : ControlCommand()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -272,6 +276,10 @@ sealed class ControlCommand {
                 json.put("mode", mode)
                 json.put("active", isNightActive)
             }
+            is FpsReport -> {
+                json.put("cmd", "FPS_REPORT")
+                json.put("fps", fps)
+            }
         }
         return json.toString()
     }
@@ -295,6 +303,7 @@ sealed class ControlCommand {
                         mode = json.getString("mode"),
                         isNightActive = json.optBoolean("active", false)
                     )
+                    "FPS_REPORT" -> FpsReport(fps = json.getInt("fps"))
                     else -> null
                 }
             } catch (e: Exception) {
