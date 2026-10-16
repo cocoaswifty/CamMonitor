@@ -49,6 +49,8 @@ render.experimental.xml
 # Keystore files
 *.jks
 *.keystore
+keystore/
+keystore.properties
 
 # OS-specific temporary files
 .DS_Store
