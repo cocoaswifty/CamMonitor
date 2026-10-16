@@ -222,23 +222,31 @@ fun ViewerModeScreen(
 
         pc.createOffer(object : SdpObserver {
             override fun onCreateSuccess(desc: SessionDescription) {
-                val elapsed = System.currentTimeMillis() - startTime
-                AppLogger.i("ViewerMode", "Local Offer created (+${elapsed}ms, SDP size=${desc.description.length} chars). Setting local description...")
-                pc.setLocalDescription(object : SdpObserver {
-                    override fun onSetSuccess() {
-                        val setElapsed = System.currentTimeMillis() - startTime
-                        AppLogger.i("ViewerMode", "Local Offer set successfully (+${setElapsed}ms), transmitting to camera: ${targetCamera.deviceId}")
-                        localOfferDesc = desc
-                        val offerMsg = SignalingMessage.Offer(desc.description)
-                        coroutineScope.launch {
-                            val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
-                            AppLogger.i("ViewerMode", "Transmitted initial Offer to camera (success=$sent)")
+                try {
+                    val elapsed = System.currentTimeMillis() - startTime
+                    AppLogger.i("ViewerMode", "Local Offer created (+${elapsed}ms, SDP size=${desc.description.length} chars). Setting local description...")
+                    pc.setLocalDescription(object : SdpObserver {
+                        override fun onSetSuccess() {
+                            try {
+                                val setElapsed = System.currentTimeMillis() - startTime
+                                AppLogger.i("ViewerMode", "Local Offer set successfully (+${setElapsed}ms), transmitting to camera: ${targetCamera.deviceId}")
+                                localOfferDesc = desc
+                                val offerMsg = SignalingMessage.Offer(desc.description)
+                                coroutineScope.launch {
+                                    val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
+                                    AppLogger.i("ViewerMode", "Transmitted initial Offer to camera (success=$sent)")
+                                }
+                            } catch (t: Throwable) {
+                                AppLogger.e("ViewerMode", "Error in setLocalDescription.onSetSuccess", t)
+                            }
                         }
-                    }
-                    override fun onCreateSuccess(p0: SessionDescription?) {}
-                    override fun onSetFailure(err: String?) { AppLogger.e("ViewerMode", "Failed setting local offer: $err") }
-                    override fun onCreateFailure(err: String?) {}
-                }, desc)
+                        override fun onCreateSuccess(p0: SessionDescription?) {}
+                        override fun onSetFailure(err: String?) { AppLogger.e("ViewerMode", "Failed setting local offer: $err") }
+                        override fun onCreateFailure(err: String?) {}
+                    }, desc)
+                } catch (t: Throwable) {
+                    AppLogger.e("ViewerMode", "Error in createOffer.onCreateSuccess", t)
+                }
             }
             override fun onSetSuccess() {}
             override fun onCreateFailure(err: String?) { AppLogger.e("ViewerMode", "Failed creating offer: $err") }
@@ -295,21 +303,25 @@ fun ViewerModeScreen(
                         val answerDesc = SessionDescription(SessionDescription.Type.ANSWER, msg.sdp)
                         pc.setRemoteDescription(object : SdpObserver {
                             override fun onSetSuccess() {
-                                val setElapsed = System.currentTimeMillis() - startTime
-                                AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
-                                webRtcManager.drainRemoteIceCandidates(targetCamera.deviceId)
-                                connectionState = ViewerConnectionState.StartingStream
+                                try {
+                                    val setElapsed = System.currentTimeMillis() - startTime
+                                    AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
+                                    webRtcManager.drainRemoteIceCandidates(targetCamera.deviceId)
+                                    connectionState = ViewerConnectionState.StartingStream
 
-                                val candidatesSnapshot = ArrayList(localIceCandidates)
-                                AppLogger.i("ViewerMode", "Camera answered: transmitting ${candidatesSnapshot.size} local ICE candidates...")
-                                coroutineScope.launch {
-                                    candidatesSnapshot.forEach { cand ->
-                                        launch {
-                                            val iceMsg = SignalingMessage.IceCandidate(cand.sdpMid, cand.sdpMLineIndex, cand.sdp)
-                                            val candSent = signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
-                                            AppLogger.d("ViewerMode", "Sent candidate on answer to camera (success=$candSent, mid=${cand.sdpMid})")
+                                    val candidatesSnapshot = ArrayList(localIceCandidates)
+                                    AppLogger.i("ViewerMode", "Camera answered: transmitting ${candidatesSnapshot.size} local ICE candidates...")
+                                    coroutineScope.launch {
+                                        candidatesSnapshot.forEach { cand ->
+                                            launch {
+                                                val iceMsg = SignalingMessage.IceCandidate(cand.sdpMid, cand.sdpMLineIndex, cand.sdp)
+                                                val candSent = signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
+                                                AppLogger.d("ViewerMode", "Sent candidate on answer to camera (success=$candSent, mid=${cand.sdpMid})")
+                                            }
                                         }
                                     }
+                                } catch (t: Throwable) {
+                                    AppLogger.e("ViewerMode", "Error in setRemoteDescription.onSetSuccess", t)
                                 }
                             }
                             override fun onCreateSuccess(p0: SessionDescription?) {}

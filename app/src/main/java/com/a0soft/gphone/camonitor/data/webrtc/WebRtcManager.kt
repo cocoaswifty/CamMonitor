@@ -245,13 +245,23 @@ class WebRtcManager(private val context: Context) {
         // Re-attach to any active PeerConnections if they exist
         peerConnections.values.forEach { pc ->
             localVideoTrack?.let { vTrack ->
-                val videoSender = pc.senders.firstOrNull { it.track()?.kind() == "video" }
-                if (videoSender != null) {
-                    videoSender.setTrack(vTrack, false)
-                    configureVideoSender(videoSender)
-                } else {
-                    val sender = pc.addTrack(vTrack, listOf("CAM_STREAM"))
-                    configureVideoSender(sender)
+                try {
+                    val videoSender = pc.senders?.firstOrNull {
+                        try {
+                            it.track()?.kind() == "video"
+                        } catch (e: Throwable) {
+                            false
+                        }
+                    }
+                    if (videoSender != null) {
+                        videoSender.setTrack(vTrack, false)
+                        configureVideoSender(videoSender)
+                    } else {
+                        val sender = pc.addTrack(vTrack, listOf("CAM_STREAM"))
+                        configureVideoSender(sender)
+                    }
+                } catch (e: Throwable) {
+                    AppLogger.w(tag, "Failed to re-attach video track to peer connection: ${e.message}")
                 }
             }
         }
@@ -262,7 +272,7 @@ class WebRtcManager(private val context: Context) {
     fun configureVideoSender(sender: RtpSender?) {
         sender ?: return
         try {
-            val parameters = sender.parameters
+            val parameters = sender.parameters ?: return
             parameters.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
             if (parameters.encodings != null) {
                 parameters.encodings.forEach { encoding ->
@@ -274,15 +284,25 @@ class WebRtcManager(private val context: Context) {
             }
             val result = sender.setParameters(parameters)
             AppLogger.i(tag, "Configured video sender parameters: degradationPreference=MAINTAIN_RESOLUTION, maxFramerate=${_streamFps.value}, result=$result")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             AppLogger.w(tag, "Failed to configure video sender parameters: ${e.message}")
         }
     }
 
     fun configureVideoSenders(pc: PeerConnection?) {
         pc ?: return
-        pc.senders?.filter { it.track()?.kind() == "video" }?.forEach { sender ->
-            configureVideoSender(sender)
+        try {
+            pc.senders?.forEach { sender ->
+                try {
+                    if (sender.track()?.kind() == "video") {
+                        configureVideoSender(sender)
+                    }
+                } catch (e: Throwable) {
+                    AppLogger.w(tag, "Failed checking sender track: ${e.message}")
+                }
+            }
+        } catch (e: Throwable) {
+            AppLogger.w(tag, "Failed to configure video senders: ${e.message}")
         }
     }
 

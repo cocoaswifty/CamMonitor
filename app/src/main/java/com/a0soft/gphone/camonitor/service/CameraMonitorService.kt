@@ -293,36 +293,47 @@ class CameraMonitorService : Service() {
         AppLogger.i(tag, "Applying remote Offer to PeerConnection for $senderId...")
         pc.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
-                val elapsed = System.currentTimeMillis() - startTime
-                AppLogger.i(tag, "Remote Offer set successfully for $senderId (+${elapsed}ms). Draining buffered ICE candidates and creating Answer...")
-                app.webRtcManager.configureVideoSenders(pc)
-                app.webRtcManager.drainRemoteIceCandidates(senderId)
-                val constraints = MediaConstraints()
-                pc.createAnswer(object : SdpObserver {
-                    override fun onCreateSuccess(answerDesc: SessionDescription) {
-                        val createElapsed = System.currentTimeMillis() - startTime
-                        AppLogger.i(tag, "Local Answer created for $senderId (+${createElapsed}ms, SDP size=${answerDesc.description.length} chars). Setting local description...")
-                        pc.setLocalDescription(object : SdpObserver {
-                            override fun onSetSuccess() {
-                                val setLocalElapsed = System.currentTimeMillis() - startTime
-                                AppLogger.i(tag, "Local Answer set successfully (+${setLocalElapsed}ms), transmitting Answer to $senderId")
-                                app.webRtcManager.configureVideoSenders(pc)
-                                val answerMsg = SignalingMessage.Answer(
-                                    sdp = answerDesc.description,
-                                    cameraName = app.securityRepository.getDeviceName(),
-                                    fps = app.webRtcManager.streamFps.value
-                                )
-                                sendSignalingMessageToViewer(senderId, answerMsg)
+                try {
+                    val elapsed = System.currentTimeMillis() - startTime
+                    AppLogger.i(tag, "Remote Offer set successfully for $senderId (+${elapsed}ms). Draining buffered ICE candidates and creating Answer...")
+                    app.webRtcManager.drainRemoteIceCandidates(senderId)
+                    val constraints = MediaConstraints()
+                    pc.createAnswer(object : SdpObserver {
+                        override fun onCreateSuccess(answerDesc: SessionDescription) {
+                            try {
+                                val createElapsed = System.currentTimeMillis() - startTime
+                                AppLogger.i(tag, "Local Answer created for $senderId (+${createElapsed}ms, SDP size=${answerDesc.description.length} chars). Setting local description...")
+                                pc.setLocalDescription(object : SdpObserver {
+                                    override fun onSetSuccess() {
+                                        try {
+                                            val setLocalElapsed = System.currentTimeMillis() - startTime
+                                            AppLogger.i(tag, "Local Answer set successfully (+${setLocalElapsed}ms), transmitting Answer to $senderId")
+                                            app.webRtcManager.configureVideoSenders(pc)
+                                            val answerMsg = SignalingMessage.Answer(
+                                                sdp = answerDesc.description,
+                                                cameraName = app.securityRepository.getDeviceName(),
+                                                fps = app.webRtcManager.streamFps.value
+                                            )
+                                            sendSignalingMessageToViewer(senderId, answerMsg)
+                                        } catch (t: Throwable) {
+                                            AppLogger.e(tag, "Error in setLocalDescription.onSetSuccess for $senderId", t)
+                                        }
+                                    }
+                                    override fun onCreateSuccess(desc: SessionDescription?) {}
+                                    override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting local answer for $senderId: $err") }
+                                    override fun onCreateFailure(err: String?) {}
+                                }, answerDesc)
+                            } catch (t: Throwable) {
+                                AppLogger.e(tag, "Error in createAnswer.onCreateSuccess for $senderId", t)
                             }
-                            override fun onCreateSuccess(desc: SessionDescription?) {}
-                            override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting local answer for $senderId: $err") }
-                            override fun onCreateFailure(err: String?) {}
-                        }, answerDesc)
-                    }
-                    override fun onSetSuccess() {}
-                    override fun onCreateFailure(err: String?) { AppLogger.e(tag, "Failed creating answer for $senderId: $err") }
-                    override fun onSetFailure(err: String?) {}
-                }, constraints)
+                        }
+                        override fun onSetSuccess() {}
+                        override fun onCreateFailure(err: String?) { AppLogger.e(tag, "Failed creating answer for $senderId: $err") }
+                        override fun onSetFailure(err: String?) {}
+                    }, constraints)
+                } catch (t: Throwable) {
+                    AppLogger.e(tag, "Error in setRemoteDescription.onSetSuccess for $senderId", t)
+                }
             }
             override fun onCreateSuccess(desc: SessionDescription?) {}
             override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting remote offer from $senderId: $err") }
