@@ -46,7 +46,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
+        }
     }
 
     private var currentLanguageTag: String = ""

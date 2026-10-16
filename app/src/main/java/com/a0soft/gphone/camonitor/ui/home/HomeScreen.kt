@@ -61,12 +61,10 @@ fun HomeScreen(
         }
     }
 
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scrollState = rememberScrollState()
 
     @Composable
-    fun CameraCard(modifier: Modifier = Modifier) {
+    fun CameraCard(isLandscape: Boolean, modifier: Modifier = Modifier) {
         ElevatedCard(
             modifier = modifier
                 .clickable {
@@ -176,7 +174,7 @@ fun HomeScreen(
     }
 
     @Composable
-    fun ViewerCard(modifier: Modifier = Modifier) {
+    fun ViewerCard(isLandscape: Boolean, modifier: Modifier = Modifier) {
         ElevatedCard(
             modifier = modifier
                 .clickable {
@@ -284,35 +282,45 @@ fun HomeScreen(
             )
         }
     ) { innerPadding ->
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(scrollState),
-            contentAlignment = Alignment.Center
         ) {
-            if (isLandscape) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Max)
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CameraCard(modifier = Modifier.weight(1f).fillMaxHeight())
-                    ViewerCard(modifier = Modifier.weight(1f).fillMaxHeight())
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CameraCard(modifier = Modifier.fillMaxWidth())
-                    ViewerCard(modifier = Modifier.fillMaxWidth())
+            val configuration = LocalConfiguration.current
+            val isLandscape = (maxWidth > maxHeight) ||
+                (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) ||
+                (configuration.screenWidthDp > configuration.screenHeightDp)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLandscape) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max)
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CameraCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
+                        ViewerCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CameraCard(isLandscape = false, modifier = Modifier.fillMaxWidth())
+                        ViewerCard(isLandscape = false, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         }
@@ -475,7 +483,12 @@ fun HomeScreen(
             onDismissRequest = { showLanguageDialog = false },
             title = { Text(stringResource(R.string.language_picker_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
                     val options = listOf(
                         LocaleHelper.LANGUAGE_FOLLOW_SYSTEM to stringResource(R.string.language_system_default),
                         LocaleHelper.LANGUAGE_EN to stringResource(R.string.language_english),
@@ -494,7 +507,7 @@ fun HomeScreen(
                                         LocaleHelper.setLanguage(context, tag)
                                     }
                                 )
-                                .padding(vertical = 8.dp),
+                                .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
@@ -511,7 +524,7 @@ fun HomeScreen(
                     }
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         TextButton(
                             onClick = {
                                 LocaleHelper.openSystemLanguageSettings(context)
