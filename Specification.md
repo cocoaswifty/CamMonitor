@@ -244,8 +244,6 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Title: `"Rename Camera"`
   * Input: `OutlinedTextField` with character counter (`0/32`) and single-line restriction.
   * Buttons: `[Cancel]` and `[Save]`.
-* **Bottom Status Banner:**
-  * Shows current network status chip (`Wi-Fi: <SSID>` or `Cellular`).
 
 ---
 
