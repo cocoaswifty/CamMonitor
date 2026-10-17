@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.view.ViewGroup
@@ -26,6 +27,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -50,6 +52,7 @@ fun CameraModeScreen(
     onExitCameraMode: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
     val activity = context as? Activity
     val view = LocalView.current
     val window = activity?.window
@@ -175,7 +178,7 @@ fun CameraModeScreen(
     }
 
     // Root UI Container
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -186,6 +189,10 @@ fun CameraModeScreen(
                 if (isBlackScreenActive) wakeUpDisplay() else idleSeconds = 0
             }
     ) {
+        val isLandscape = (maxWidth > maxHeight) ||
+            (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) ||
+            (configuration.screenWidthDp > configuration.screenHeightDp)
+
         // Local Camera Live Viewfinder
         if (!isBlackScreenActive && streamingState != CameraStreamingState.PAUSED_INACTIVITY) {
             AndroidView(
@@ -272,7 +279,12 @@ fun CameraModeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Text(stringResource(R.string.camera_viewers_count, activeViewers, 2), style = MaterialTheme.typography.labelMedium)
+                                    val viewersText = if (isLandscape) {
+                                        stringResource(R.string.camera_viewers_count, activeViewers, 2)
+                                    } else {
+                                        stringResource(R.string.camera_viewers_count_short, activeViewers, 2)
+                                    }
+                                    Text(viewersText, style = MaterialTheme.typography.labelMedium)
                                 }
                             }
 
