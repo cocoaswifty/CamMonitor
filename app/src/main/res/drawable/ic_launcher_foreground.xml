@@ -3,65 +3,76 @@
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:viewportWidth="132"
+    android:viewportHeight="132">
 
-    <path
-        android:pathData="M37,31h8a2,2 0 0,1 2,2v3h-12v-3a2,2 0 0,1 2,-2z"
-        android:fillColor="#FFA8EAE0" />
+    <!-- Group perfectly centers and scales the artwork inside Android's 66dp Safe Zone -->
+    <group android:translateX="13" android:translateY="13.5">
+        
+        <!-- Camera Shutter Button -->
+        <path
+            android:pathData="M37,31h8a2,2 0 0,1 2,2v3h-12v-3a2,2 0 0,1 2,-2z"
+            android:fillColor="#FFA8EAE0" />
 
-    <path android:pathData="M36,35h12c3,0 5,3 8,4c10,1 16,8 16,17v2c4,-2 7,-2 10,-2v12c0,6.6 -5.4,12 -12,12h-34c-6.6,0 -12,-5.4 -12,-12v-21c0,-6.6 5.4,-12 12,-12z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="24"
-                android:startY="35"
-                android:endX="82"
-                android:endY="80"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FFA8EAE0" />
-                <item android:offset="1.0" android:color="#FF29A3A9" />
-            </gradient>
-        </aapt:attr>
-    </path>
+        <!-- Camera Body -->
+        <path android:pathData="M36,35h12c3,0 5,3 8,4c10,1 16,8 16,17v2c4,-2 7,-2 10,-2v12c0,6.6 -5.4,12 -12,12h-34c-6.6,0 -12,-5.4 -12,-12v-21c0,-6.6 5.4,-12 12,-12z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="24"
+                    android:startY="35"
+                    android:endX="82"
+                    android:endY="80"
+                    android:type="linear">
+                    <item android:offset="0.0" android:color="#FFA8EAE0" />
+                    <item android:offset="1.0" android:color="#FF29A3A9" />
+                </gradient>
+            </aapt:attr>
+        </path>
 
-    <path
-        android:pathData="M43.5,65.5 L58,80 H70 C76.6,80 82,74.6 82,68 V58 L61.5,47.5 Z"
-        android:fillColor="#330E355C" />
+        <!-- Subtle Material Long Shadow under Lens -->
+        <path
+            android:pathData="M43.5,65.5 L58,80 H70 C76.6,80 82,74.6 82,68 V 58 L61.5,47.5 Z"
+            android:fillColor="#330E355C" />
 
-    <path
-        android:pathData="M52,57m-13.5,0a13.5,13.5 0 1,0 27,0a13.5,13.5 0 1,0 -27,0"
-        android:fillColor="#FFB8F1E7" />
+        <!-- Outer Lens Ring -->
+        <path
+            android:pathData="M52,57m-13.5,0a13.5,13.5 0 1,0 27,0a13.5,13.5 0 1,0 -27,0"
+            android:fillColor="#FFB8F1E7" />
 
-    <path
-        android:pathData="M52,57m-9,0a9,9 0 1,0 18,0a9,9 0 1,0 -18,0"
-        android:fillColor="#FF113F67" />
+        <!-- Inner Dark Lens Ring -->
+        <path
+            android:pathData="M52,57m-9,0a9,9 0 1,0 18,0a9,9 0 1,0 -18,0"
+            android:fillColor="#FF113F67" />
 
-    <path android:pathData="M52,57m-5.5,0a5.5,5.5 0 1,0 11,0a5.5,5.5 0 1,0 -11,0">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="46"
-                android:startY="51"
-                android:endX="58"
-                android:endY="63"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FF9EE6DC" />
-                <item android:offset="1.0" android:color="#FF38A9B0" />
-            </gradient>
-        </aapt:attr>
-    </path>
+        <!-- Center Lens Core -->
+        <path android:pathData="M52,57m-5.5,0a5.5,5.5 0 1,0 11,0a5.5,5.5 0 1,0 -11,0">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="46"
+                    android:startY="51"
+                    android:endX="58"
+                    android:endY="63"
+                    android:type="linear">
+                    <item android:offset="0.0" android:color="#FF9EE6DC" />
+                    <item android:offset="1.0" android:color="#FF38A9B0" />
+                </gradient>
+            </aapt:attr>
+        </path>
 
-    <path
-        android:pathData="M55,34 A19,19 0 0,1 74,53"
-        android:strokeWidth="4.2"
-        android:strokeColor="#FF8CE0D8"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000" />
+        <!-- Wireless Wave (Inner Arc) -->
+        <path
+            android:pathData="M55,34 A19,19 0 0,1 74,53"
+            android:strokeWidth="4.2"
+            android:strokeColor="#FF8CE0D8"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
 
-    <path
-        android:pathData="M55,27 A26,26 0 0,1 81,53"
-        android:strokeWidth="4.2"
-        android:strokeColor="#FFA8EAE0"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000" />
-
+        <!-- Wireless Wave (Outer Arc) -->
+        <path
+            android:pathData="M55,27 A26,26 0 0,1 81,53"
+            android:strokeWidth="4.2"
+            android:strokeColor="#FFA8EAE0"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+    </group>
 </vector>
