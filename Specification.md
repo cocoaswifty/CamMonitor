@@ -8,6 +8,7 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
   * **Application ID / Package Name:** `com.a0soft.gphone.camonitor`
+  * **Current App Version:** `1.0.2` (`versionCode = 3`)
   * **Minimum SDK (`minSdk`):** `28` (Android 9 Pie)
   * **Target SDK (`targetSdk`):** `37` (Android 17)
   * **Compile SDK (`compileSdk`):** `37`
@@ -170,6 +171,10 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * `StatusWarning`: Amber (`#FFD600`).
   * `StatusError`: Sunset Red (`#FF5252`).
 * **Typography:** Material 3 Type Scale with monospace formatting for technical metrics (FPS, resolution, timers, logs).
+* **Adaptive App Launcher Icon:**
+  * Canvas dimension: $108 \times 108\text{ dp}$.
+  * Safe Zone Compliance: All critical visual elements (camera body, lens, pupil, monitor status dot) are strictly centered inside the Material Design circular safe zone of diameter $66\text{ dp}$ (centered at coordinates $(54, 54)$ with radius $33\text{ dp}$), preventing clipping across all OEM adaptive masking geometries (circle, squircle, rounded square).
+  * Layering: Features dedicated foreground (`ic_launcher_foreground.xml`), dark background (`ic_launcher_background.xml`), and tinted monochrome (`ic_launcher_monochrome.xml`) layers for full Material You dynamic theming on Android 13+.
 
 ### 4.2 State Architecture & Recomposition Best Practices
 * **Unidirectional Data Flow (UDF):**
@@ -281,15 +286,17 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 #### 5.3.1 Active Streaming View
 * **Background:** Live camera preview via CameraX (`CameraXVideoCapturer` delivering to WebRTC `SurfaceTextureHelper`).
 * **Top Status HUD (Semi-transparent dark pill overlays):**
-  * **Device Name & Live Badge:** Emerald green pulsating dot + text `"[Live] Living Room Cam (720p@<fps>fps)"` (reflecting actual negotiated hardware FPS).
-  * **Rename Action:** Subtle pencil icon next to name to trigger the Rename Dialog on the fly.
-  * **Viewer Count Pill:** Eye icon + text `"1 / 2 Viewers"` (or `"2 / 2 Viewers"`).
-  * **Flashlight Status:** Torch icon (lit yellow if active, gray if inactive).
-  * **Night Mode Indicator:** Displays when CameraX `ExtensionMode.NIGHT` is dynamically active.
+  * **Live Stream Badge:** Emerald green pulsating dot + text `"720p <fps>fps"` (reflecting actual negotiated hardware FPS, omitting redundant "Live" text to ensure clean display on compact screens).
+  * **Viewer Count Pill:** Eye icon + orientation-adaptive viewer count pill:
+    * **Landscape Mode:** Displays `"<count>/2 Viewers"` (e.g. `"0/2 Viewers"`, `"1/2 Viewers"`).
+    * **Portrait Mode:** Displays compact `"<count>/2"` (e.g. `"0/2"`, `"1/2"`), maximizing horizontal breathing room for badges and status text.
+  * **Flashlight Status:** Torch icon (lit primary color if active, gray if inactive).
+  * **Night Mode Indicator:** Displays when CameraX `ExtensionMode.NIGHT` or low-light fallback is dynamically active.
   * **Intercom Live Banner:** Prominent primary color pill badge with `VolumeUp` icon and text `"Intercom Live (Viewer Speaking)"` displayed automatically with smooth fade-in/out whenever a connected viewer holds the PTT intercom button.
+* **Center Overlay:** Current camera name text (e.g., `"4F"`) with interactive `"Rename Camera"` button to update device name dynamically.
 * **Bottom Control Bar (SurfaceContainer semi-transparent overlay):**
-  * `FilledTonalButton`: `"Turn Off Display (OLED Saver)"` $\to$ Manually triggers black screen mode.
-  * `Button(colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error))`: `"Exit Camera Mode"` $\to$ Confirms and terminates stream.
+  * `FilledTonalButton`: `"Black Screen"` $\to$ Manually triggers black screen mode.
+  * `Button(colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error))`: `"Exit Camera"` $\to$ Confirms and terminates stream.
 
 #### 5.3.2 Power-Saving OLED Black Screen View
 * **Visual:** Full-screen pure black `#000000` `Box(Modifier.fillMaxSize().background(Color.Black))`.
@@ -330,8 +337,8 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Left:** `IconButton(Icons.Default.ArrowBack)` $\to$ `"Exit Viewer Mode"`.
 * **Center:**
   * **Title:** Camera device name (e.g. `"Living Room Cam"`). Dynamically updates if PA is renamed.
-  * **Subtitle badge:** Status indicator (`"Live (720p <fps>fps)"`, `"Connecting to camera..."`, `"Disconnected"`, `"Connection Failed"`).
-  * **Inline Retry Action:** When status is neither `"Live"` nor `"Connecting"`, a compact `"Retry"` button (`FilledTonalButton`) is displayed adjacent to the status badge to allow immediate manual re-triggering.
+  * **Subtitle badge:** Status indicator (`"720p <fps>fps"` when streaming live, `"Connecting to camera..."`, `"Disconnected"`, `"Connection Failed"`). Redundant "Live" prefix is omitted for compact readability on small screens.
+  * **Inline Retry Action:** When status is neither streaming live nor `"Connecting"`, a compact `"Retry"` button (`FilledTonalButton`) is displayed adjacent to the status badge to allow immediate manual re-triggering.
   * **Battery Status Row:** Dual device battery indicators:
     * **Camera Battery:** `Icons.Default.Videocam` + text (e.g., `"Cam 85%⚡"`).
     * **Viewer Battery:** `Icons.Default.Smartphone` + text (e.g., `"Viewer 92%"`).
