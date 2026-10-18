@@ -1,6 +1,7 @@
 # CamMonitor
 
-> **Languages:** [English](README.md) | [繁體中文](README_TW.md)
+> **Languages:** [English](README.md) | [繁體中文](README_TW.md)  
+> **Story:** [Why I Created This Project: A 40-Year Developer's Reflections on Building with AI](WhyCreateThisProject.md)
 
 ![CamMonitor Promo Banner](cammonitor_promo.jpg)
 
