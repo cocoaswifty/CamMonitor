@@ -19,6 +19,7 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
 - **Smart Battery & Screen Protection:**
   - **OLED Black Screen:** Camera screen turns completely black after 1 minute of inactivity to prevent OLED burn-in and save power. Tap anywhere to wake.
   - **Auto-Standby Mode:** If no viewers are watching for 1 minute, the camera sensor shuts down to preserve battery and automatically wakes when a viewer connects.
+  - **Hardware Longevity & Anti-Overheating:** Deliberately avoids 24/7 continuous video recording and persistent AI object detection to prevent phone overheating, battery swelling, and camera sensor wear. (Users can use AI tools to add these functions if specifically needed).
 - **Remote Controls from Viewer:**
   - **3-Way Night Mode:** Switch between `Auto` (activates via ambient light sensor), `Night` (forced low-light enhancement), and `Normal`.
   - **Remote Flashlight:** Toggle the camera phone's LED torch on and off remotely.
@@ -102,6 +103,17 @@ Before first use, pair your two devices:
 
 - **Change Language:** Tap the **Globe/Language** icon on the top-right of the Home screen to select between *System Default*, *English*, or *繁體中文*.
 - **System Logs:** Tap the **Document** icon on the top-right of the Home screen to view the connection and signaling diagnostic logs. Tap the Share icon to export the log file.
+
+---
+
+## Design Philosophy: Hardware Longevity & Heat Protection
+
+To prevent spare phones from overheating, battery degradation/swelling, and shortened camera sensor lifespan, CamMonitor is deliberately built as an **on-demand live monitor** rather than a 24/7 continuous recorder:
+
+- **No Continuous Video Recording:** Keeping the camera sensor and video encoder constantly running generates significant heat and degrades the device and battery quickly.
+- **No On-Device Object / Motion Detection:** Continuous computer vision models require holding the camera sensor and NPU/CPU at high utilization indefinitely.
+- **Auto-Standby Power Conservation:** If no viewer is connected for 1 minute, the camera hardware shuts down completely and enters low-power standby until a viewer connects.
+- **Adding These Features:** If your specific use case requires continuous recording or object detection, you can use AI coding tools to extend this open-source codebase (e.g. adding CameraX `VideoCapture` or MLKit object detection onto the existing pipeline).
 
 ---
 
