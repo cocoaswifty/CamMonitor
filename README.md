@@ -110,3 +110,10 @@ Before first use, pair your two devices:
 - **No Video Relaying:** Media streams directly peer-to-peer between your phones via WebRTC.
 - **End-to-End Encryption:** Audio, video, and control signals are protected by DTLS-SRTP and AES-GCM encryption.
 - **Zero Cloud Footprint:** No credentials, tokens, or recordings are sent to or stored on any server.
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
