@@ -1,0 +1,112 @@
+# CamMonitor
+
+> **Languages:** [English](README.md) | [繁體中文](README_TW.md)
+
+CamMonitor turns your spare Android phone into a private, zero-account home security camera. Connect two Android devices directly using peer-to-peer (P2P) encryption over Wi-Fi or cellular networks without cloud subscriptions, login accounts, or third-party servers storing your video.
+
+---
+
+## Key Features
+
+- **Zero-Account Setup:** No signups, passwords, or cloud accounts. Pairing is completed instantly via an encrypted one-time QR code.
+- **Strict End-to-End Security:** P2P connection encrypted with ECDSA device keys and AES-256-GCM. Only paired devices can access your camera feed.
+- **Dual Device Roles:**
+  - **Camera Mode:** Runs on the phone used as the camera (captures 720p HD video and audio).
+  - **Viewer Mode:** Runs on your daily phone to monitor the live feed.
+- **Multi-Device Support:**
+  - 1 Camera can stream to up to **2 viewers** simultaneously.
+  - 1 Viewer can pair with up to **8 different cameras** (e.g., Living Room, Front Door, Baby Nursery).
+- **Smart Battery & Screen Protection:**
+  - **OLED Black Screen:** Camera screen turns completely black after 1 minute of inactivity to prevent OLED burn-in and save power. Tap anywhere to wake.
+  - **Auto-Standby Mode:** If no viewers are watching for 1 minute, the camera sensor shuts down to preserve battery and automatically wakes when a viewer connects.
+- **Remote Controls from Viewer:**
+  - **3-Way Night Mode:** Switch between `Auto` (activates via ambient light sensor), `Night` (forced low-light enhancement), and `Normal`.
+  - **Remote Flashlight:** Toggle the camera phone's LED torch on and off remotely.
+  - **Push-to-Talk (PTT) Intercom:** Hold the microphone button on the viewer to speak through the camera phone.
+  - **Orientation & Fit Controls:** Rotate incoming video in 90° increments ($0^\circ \to 90^\circ \to 180^\circ \to 270^\circ$) and toggle between Aspect Fit (full uncropped view) and Aspect Fill.
+  - **Battery Monitoring:** View real-time battery percentages and charging statuses for both the camera and viewer devices.
+- **Local Diagnostics:** Built-in rolling log viewer with instant share/export for troubleshooting.
+- **Multi-Language:** English and Traditional Chinese (繁體中文).
+
+---
+
+## Requirements
+
+- **Operating System:** Android 9.0 (Pie / API 28) or higher.
+- **Permissions:** Camera, Microphone, and Notifications (Android 13+).
+- **Network:** Both phones must have an active Wi-Fi or mobile data connection. Works on local Wi-Fi (LAN) and over the Internet (WAN).
+
+---
+
+## Getting Started
+
+### 1. One-Time Pairing
+
+Before first use, pair your two devices:
+
+1. **On the Camera Phone:**
+   - Open CamMonitor.
+   - Tap **Start Camera Mode** (or tap **Pair Viewer** if prompted).
+   - A pairing QR code will appear on screen.
+2. **On the Viewer Phone:**
+   - Open CamMonitor.
+   - Tap **Start Viewer Mode** (or tap **Pair Camera**).
+   - Point the camera scanner at the QR code displayed on the camera phone.
+3. Once scanned, both phones will confirm the pairing automatically.
+
+*(You only need to pair once. Paired devices are remembered permanently until manually removed.)*
+
+---
+
+### 2. Using Camera Mode (The Camera Phone)
+
+1. Open CamMonitor and tap **Start Camera Mode**.
+2. Mount or position your phone facing the area you want to monitor.
+3. **Screen Behavior:**
+   - **HUD Overlay:** The top bar shows streaming resolution/FPS (`720p 15fps`), active viewer count (`0/2` in portrait, `0/2 Viewers` in landscape), Night mode status, and flashlight status.
+   - **OLED Black Screen:** After 60 seconds without touch, the display turns completely black to conserve power and protect the screen. **Tap anywhere on the screen** to turn the display back on.
+   - **Manual Black Screen:** Tap the **Black Screen** button at the bottom left anytime to turn off the display immediately.
+   - **Camera Standby:** If no viewer connects within 1 minute, the camera enters standby mode to save battery. It will wake up automatically as soon as a paired viewer connects.
+4. **To Exit:** Tap **Exit Camera** (or press the Back button and confirm).
+
+---
+
+### 3. Using Viewer Mode (Your Everyday Phone)
+
+1. Open CamMonitor and tap **Start Viewer Mode**.
+   - If you have multiple cameras paired, a dialog will appear allowing you to select which camera to watch.
+2. **Live Monitoring Controls:**
+   - **Top Bar:**
+     - Camera device name and live status badge.
+     - Dual battery monitor: displays camera battery level (e.g., `Cam 85%⚡`) and viewer battery level (`Viewer 90%`).
+     - **Night Mode Button:** Tap to cycle between `Auto`, `Night`, and `Normal` modes.
+     - **Torch Button:** Tap to turn the camera phone's flashlight on or off.
+   - **Bottom Bar:**
+     - **Rotate (90°):** Rotates the video stream 90 degrees clockwise per tap to adjust for camera mounting angles.
+     - **Aspect Ratio:** Toggle between full view (Aspect Fit) and full screen (Aspect Fill). You can also double-tap the video to toggle.
+     - **Push-to-Talk (PTT):** Press and hold **Hold to Talk** to broadcast your voice to the camera phone. Release to stop speaking.
+     - **Audio Mute/Unmute:** Toggle camera audio listening on or off.
+3. **To Exit:** Tap the Back arrow at the top-left or use the system back gesture.
+
+---
+
+## Managing Paired Devices
+
+- Tap the **Devices** icon (`Icons.Default.Devices`) on the top-right of the Home Screen to open **Paired Devices**.
+- View all paired cameras and viewers along with their pairing dates and IDs.
+- Tap the red trash icon next to any device to unpair and revoke its access immediately.
+
+---
+
+## Language & System Logs
+
+- **Change Language:** Tap the **Globe/Language** icon on the top-right of the Home screen to select between *System Default*, *English*, or *繁體中文*.
+- **System Logs:** Tap the **Document** icon on the top-right of the Home screen to view the connection and signaling diagnostic logs. Tap the Share icon to export the log file.
+
+---
+
+## Privacy & Security
+
+- **No Video Relaying:** Media streams directly peer-to-peer between your phones via WebRTC.
+- **End-to-End Encryption:** Audio, video, and control signals are protected by DTLS-SRTP and AES-GCM encryption.
+- **Zero Cloud Footprint:** No credentials, tokens, or recordings are sent to or stored on any server.
