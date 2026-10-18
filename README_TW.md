@@ -2,6 +2,8 @@
 
 > **語言版本：** [English](README.md) | [繁體中文](README_TW.md)
 
+![CamMonitor 宣傳橫幅](cammonitor_promo_tw.jpg)
+
 CamMonitor 能將您閒置的舊 Android 手機化身為居家安全監控攝影機。透過端對端加密（P2P）直接連線，支援 Wi-Fi 區域網路與行動數據外網，無需註冊帳號、無雲端訂閱費用，更不會有任何第三方伺服器儲存您的視訊畫面。
 
 ---

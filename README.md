@@ -2,6 +2,8 @@
 
 > **Languages:** [English](README.md) | [繁體中文](README_TW.md)
 
+![CamMonitor Promo Banner](cammonitor_promo.jpg)
+
 CamMonitor turns your spare Android phone into a private, zero-account home security camera. Connect two Android devices directly using peer-to-peer (P2P) encryption over Wi-Fi or cellular networks without cloud subscriptions, login accounts, or third-party servers storing your video.
 
 ---
