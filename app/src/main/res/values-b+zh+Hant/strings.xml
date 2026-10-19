@@ -154,4 +154,19 @@
     <string name="smart_record_refresh">重新整理</string>
     <string name="smart_record_play">播放</string>
     <string name="smart_record_share">分享影片</string>
+    <!-- 跨平台網頁觀看端 -->
+    <string name="web_pairing_title">網頁觀看端配對</string>
+    <string name="web_pairing_hint">用 iPhone 或 MacBook 開啟 QR Code 中的安全連結，於網頁點選「配對此瀏覽器」，請保持本頁開啟直到配對成功。</string>
+    <string name="web_pairing_expiry">配對邀請剩餘 %1$02d:%2$02d</string>
+    <string name="web_pairing_qr">網頁觀看端配對 QR Code</string>
+    <string name="web_pairing_copy">複製連結</string>
+    <string name="web_pairing_share">分享連結</string>
+    <string name="web_pairing_private_notice">持有這個連結的人可能在五分鐘內發起一次配對。請把它當作密碼，只私下分享。</string>
+    <string name="web_pairing_turn_settings">TURN 中繼設定</string>
+    <string name="web_pairing_turn_enabled">已設定 TURN 中繼。修改 TURN 後，需要在瀏覽器重新配對才能使用新設定。</string>
+    <string name="web_pairing_turn_optional">尚未設定 TURN。STUN 可能跨網路直連，但部分 Wi-Fi 或行動網路會失敗。</string>
+    <string name="web_pairing_pages_setup">需要先啟用 GitHub Pages（Settings → Pages → GitHub Actions）發布網頁。詳細請看 docs/WebViewer.md。</string>
+    <string name="web_pairing_full">攝影機最多配對兩台觀看端，請先移除一台。</string>
+    <string name="web_pairing_send_failed">無法送出配對確認，請重新嘗試。</string>
+    <string name="web_pairing_save">儲存</string>
 </resources>
