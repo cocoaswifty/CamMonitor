@@ -2,4 +2,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <files-path name="internal_logs" path="logs/" />
     <external-files-path name="external_logs" path="logs/" />
+    <external-files-path name="event_videos" path="Movies/CamMonitorEvents/" />
+    <files-path name="internal_event_videos" path="CamMonitorEvents/" />
 </paths>
