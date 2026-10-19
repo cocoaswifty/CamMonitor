@@ -2,14 +2,8 @@ name: Web Viewer CI
 
 on:
   pull_request:
-    paths:
-      - 'docs/web-viewer/**'
-      - '.github/workflows/web-viewer-ci.yml'
   push:
     branches: [main]
-    paths:
-      - 'docs/web-viewer/**'
-      - '.github/workflows/web-viewer-ci.yml'
 
 permissions:
   contents: read
