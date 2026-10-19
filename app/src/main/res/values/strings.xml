@@ -169,4 +169,9 @@
     <string name="web_pairing_full">Camera supports at most two paired viewers. Remove an existing viewer first.</string>
     <string name="web_pairing_send_failed">Unable to deliver confirmation. Please retry pairing.</string>
     <string name="web_pairing_save">Save</string>
+    <string name="smart_record_shared_info">Smart event recording and remote WebRTC live viewing share one camera. The frame is classified approximately every 10 seconds while idle; a matching person/animal triggers MP4 recording until absent for 4 seconds. The camera remains open to allow immediate remote viewing.</string>
+    <string name="smart_record_enable">Enable smart event recording</string>
+    <string name="smart_record_shared_enabled">When Camera Mode is next started, event recording and remote live viewing run together. Continuous camera use consumes more power.</string>
+    <string name="smart_record_shared_disabled">When disabled, Camera Mode provides live WebRTC viewing without smart recording.</string>
+    <string name="smart_record_start_shared_monitor">Start camera and remote viewer</string>
 </resources>
