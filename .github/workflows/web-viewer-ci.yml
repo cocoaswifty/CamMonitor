@@ -1,0 +1,31 @@
+name: Web Viewer CI
+
+on:
+  pull_request:
+    paths:
+      - 'docs/web-viewer/**'
+      - '.github/workflows/web-viewer-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/web-viewer/**'
+      - '.github/workflows/web-viewer-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  browser-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JavaScript syntax
+        run: |
+          node --check docs/web-viewer/protocol.js
+          node --check docs/web-viewer/app.js
+          node --check docs/web-viewer/test-protocol.mjs
+      - name: Test pairing encryption and replay protection
+        run: node --test docs/web-viewer/test-protocol.mjs
