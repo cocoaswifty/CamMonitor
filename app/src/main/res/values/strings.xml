@@ -138,4 +138,20 @@
     <string name="about_open_source_notice">This app is open source under the Apache 2.0 License.</string>
     <string name="about_view_on_github">View on GitHub</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <!-- On-device smart event recording -->
+    <string name="smart_record_title">Smart Event Recording</string>
+    <string name="smart_record_info">After an empty scan, the camera turns off for 10 seconds before checking again. When a person or animal appears, record until none is seen for 4 seconds. This mode is separate from live monitoring.</string>
+    <string name="smart_record_off">Stopped</string>
+    <string name="smart_record_scanning">Checking camera...</string>
+    <string name="smart_record_recording">Recording an event</string>
+    <string name="smart_record_sleep">Camera off · checking again in 10 seconds</string>
+    <string name="smart_record_error">Scan error · retry scheduled</string>
+    <string name="smart_record_start">Start smart recording</string>
+    <string name="smart_record_stop">Stop smart recording</string>
+    <string name="smart_record_camera_permission">Please grant camera permission in Settings first.</string>
+    <string name="smart_record_local_only">MP4 files stay on this device and are not uploaded. Recognition may miss distant or obscured animals and people.</string>
+    <string name="smart_record_clips">Saved videos</string>
+    <string name="smart_record_refresh">Refresh</string>
+    <string name="smart_record_play">Play video</string>
+    <string name="smart_record_share">Share video</string>
 </resources>
