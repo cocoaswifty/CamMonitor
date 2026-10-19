@@ -110,6 +110,7 @@ class CameraXVideoCapturer(
     private var extensionsManager: ExtensionsManager? = null
     private var camera: Camera? = null
     private var preview: Preview? = null
+    private var eventRecorder: SharedEventRecorder? = null
     private var surface: Surface? = null
 
     var currentTargetRotation: Int = Surface.ROTATION_0
@@ -135,6 +136,12 @@ class CameraXVideoCapturer(
         AppLogger.i(tag, "NightModeSetting changed to: $setting")
         mainHandler.post {
             if (!isCapturing.get()) return@post
+            if (eventRecorder != null) {
+                // Night extension rebind would finalize a shared recording.
+                // Prefer uninterrupted live streaming + event clips.
+                AppLogger.i(tag, "Deferred night mode rebind while smart events are enabled")
+                return@post
+            }
             when (setting) {
                 NightModeSetting.AUTO -> {
                     startLightMonitoring()
@@ -203,6 +210,9 @@ class CameraXVideoCapturer(
             try {
                 val initialRotation = getDeviceRotation()
                 currentTargetRotation = initialRotation
+                if (SmartEventSettings.isEnabled(context)) {
+                    eventRecorder = SharedEventRecorder(context)
+                }
 
                 // Start WebRTC listening to incoming OpenGL texture frames
                 helper.startListening { videoFrame ->
@@ -253,7 +263,7 @@ class CameraXVideoCapturer(
 
                 when (nightModeSetting) {
                     NightModeSetting.AUTO -> {
-                        if (preferNightMode) {
+                        if (preferNightMode && eventRecorder == null) {
                             startLightMonitoring()
                         }
                         val initialNight = preferNightMode && currentLux < LUX_THRESHOLD_NIGHT_ENTER
@@ -291,7 +301,7 @@ class CameraXVideoCapturer(
         val targetSelector: CameraSelector
         val actuallyNight: Boolean
 
-        if (enableNight) {
+        if (enableNight && eventRecorder == null) {
             if (isNightExtensionSupported) {
                 targetSelector = extManager.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
                 AppLogger.i(tag, "Binding CameraX with ExtensionMode.NIGHT")
@@ -337,7 +347,7 @@ class CameraXVideoCapturer(
         onFpsDetermined?.invoke(finalFps)
         AppLogger.i(tag, "Selected hardware AE FPS range: $selectedFpsRange, finalFps=$finalFps (target=$lastFramerate)")
 
-        if (enableNight && !isNightExtensionSupported) {
+        if (enableNight && eventRecorder == null && !isNightExtensionSupported) {
             AppLogger.i(tag, "Applying Camera2 low-light fallback")
             configureLowLightFallback(previewBuilder, chars, selectedFpsRange)
         } else {
@@ -368,8 +378,26 @@ class CameraXVideoCapturer(
             }
         }
 
+        eventRecorder?.prepareForUnbind()
         provider.unbindAll()
-        camera = provider.bindToLifecycle(capturerLifecycleOwner, targetSelector, newPreview)
+        val recorder = eventRecorder
+        camera = if (recorder != null) {
+            try {
+                val additions = recorder.useCases()
+                provider.bindToLifecycle(
+                    capturerLifecycleOwner, targetSelector,
+                    newPreview, *additions
+                )
+            } catch (error: Exception) {
+                AppLogger.e(tag, "Shared smart event pipeline unsupported; keeping live view", error)
+                recorder.prepareForUnbind()
+                recorder.onUnsupportedCamera(error)
+                provider.unbindAll()
+                provider.bindToLifecycle(capturerLifecycleOwner, targetSelector, newPreview)
+            }
+        } else {
+            provider.bindToLifecycle(capturerLifecycleOwner, targetSelector, newPreview)
+        }
         _isNightModeActiveFlow.value = actuallyNight
         onNightModeChanged?.invoke(actuallyNight)
 
@@ -597,6 +625,8 @@ class CameraXVideoCapturer(
         val latch = CountDownLatch(1)
         mainHandler.post {
             try {
+                eventRecorder?.close()
+                eventRecorder = null
                 capturerLifecycleOwner.stop()
                 cameraProvider?.unbindAll()
                 camera = null

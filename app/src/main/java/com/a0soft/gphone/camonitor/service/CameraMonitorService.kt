@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.data.camera.SmartEventSettings
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
@@ -209,6 +210,13 @@ class CameraMonitorService : Service() {
 
     private fun startInactivityTimer() {
         inactivityJob?.cancel()
+        // A single CameraX source must remain live for smart event detection
+        // even when no remote viewer is currently connected. Avoid stopping
+        // the shared capturer while it might be writing an event clip.
+        if (SmartEventSettings.isEnabled(this)) {
+            AppLogger.i(tag, "Smart monitoring active: continuous camera instead of viewer timeout")
+            return
+        }
         inactivityJob = serviceScope.launch {
             AppLogger.i(tag, "Inactivity timer started: 60s countdown until camera pause")
             delay(60_000L) // 1 minute

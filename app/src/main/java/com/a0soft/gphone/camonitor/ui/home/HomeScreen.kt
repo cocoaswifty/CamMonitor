@@ -37,7 +37,8 @@ fun HomeScreen(
     onOpenPairedDevices: () -> Unit,
     onOpenLogs: () -> Unit,
     onOpenAbout: () -> Unit,
-    onOpenSmartRecording: () -> Unit
+    onOpenSmartRecording: () -> Unit,
+    onOpenWebViewerPairing: () -> Unit
 ) {
     val context = LocalContext.current
     val securityRepo = remember { CamMonitorApp.instance.securityRepository }
@@ -279,6 +280,9 @@ fun HomeScreen(
                     }
                     IconButton(onClick = onOpenSmartRecording) {
                         Icon(Icons.Default.Videocam, contentDescription = stringResource(R.string.smart_record_title))
+                    }
+                    IconButton(onClick = onOpenWebViewerPairing) {
+                        Icon(Icons.Default.LaptopMac, contentDescription = stringResource(R.string.web_pairing_title))
                     }
                     IconButton(onClick = onOpenAbout) {
                         Icon(Icons.Default.Info, contentDescription = stringResource(R.string.about_title))

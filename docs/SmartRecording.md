@@ -1,43 +1,61 @@
-# Smart Event Recording / 智慧事件錄影（MVP）
+# Smart Event Recording + Live WebRTC (shared CameraX pipeline)
 
-This optional **on-device** mode uses CameraX ImageAnalysis and the ML Kit bundled
-image-labeling model. It is independent of the existing WebRTC live camera mode.
+CamMonitor now supports **simultaneous on-device person/animal event recording
+and remote WebRTC live viewing** from Android, MacBook browsers and iPhone Safari.
 
-## 行為
+## Operation
 
-1. 使用者從首頁的攝影機圖示進入「智慧事件錄影」，明確點選啟動。
-2. 啟動 Camera 前景服務，開啟後鏡頭並在約 **4 秒**的視窗內分析畫面。
-3. 未偵測到人物／動物：釋放 CameraX 相機，**等待 10 秒後**重新開啟檢查。
-4. 發現目標：啟動無聲 MP4 錄影，保持相機開啟並持續辨識。
-5. 連續 **4 秒**沒有再次辨識到目標後，完成錄影並釋放相機，再進入 10 秒等待週期。
-6. 停止按鈕或前景服務通知中的停止操作會取消掃描並結束錄影。
+1. Android CamMonitor → **Smart Event Recording** (camera icon in top bar).
+2. Enable smart recording, then tap **Start camera and remote viewer**.
+3. Camera Mode uses a **single CameraX session** with:
+   - `Preview` → Android WebRTC video track for paired viewers;
+   - `ImageAnalysis` → bundled ML Kit image labeling;
+   - `VideoCapture` → local MP4 recording of matching events.
+4. When not recording, sample a frame about every **10 seconds** for a person
+   or common animal label. When a target is found, start recording and classify
+   more frequently. Stop when no matching label has been seen for **4 seconds**.
+5. MP4 clips are stored privately in `Movies/CamMonitorEvents` under the app's
+   external-files area. They can be viewed or shared from the Smart Recording
+   screen. No cloud upload or continuous audio recording.
 
-影片保存在裝置專屬的 `Movies/CamMonitorEvents` 目錄，可在 App 內播放或透過
-Android 分享面板匯出。沒有自動上傳。
+The camera stays **open** while smart monitoring is enabled, even with **zero
+remote viewers**, so Android can detect events and accept incoming WebRTC offers
+immediately. This supersedes the earlier 4-second camera probe / 10-second
+physical camera-off duty cycle. In simultaneous mode the **AI sampling interval**
+is ten seconds, not the camera opening interval. Continuous capture uses more
+battery and can increase device temperature.
 
-## 安全與使用限制
+When smart monitoring is **disabled**, existing 60-second viewer inactivity
+standby and night-extension camera behavior remain unchanged.
 
-- 模型透過 `com.google.mlkit:image-labeling:17.0.9` 隨 App 安裝，**不需網路推論**。
-- **圖片標籤不是多物件偵測**；少見動物、遠處的人物、暗處與遮擋可能漏判。
-- 同時使用 `ImageAnalysis + VideoCapture` 並非所有裝置都支援；失敗會釋放鏡頭並等待下一次嘗試。
-- 與現有 WebRTC 攝影機模式互斥，避免兩個模組搶用相機。
-- Android 的相機前景服務必須由前景 App 啟動，不支援 App 尚未執行就靜默開啟相機。
-- 不含動態偵測通知、影片自動刪除、容量配額、音訊錄製或預錄緩衝。請定期管理儲存空間。
-- 目前**尚未進行完整 Android Gradle 編譯或實機相容性驗證**，不建議直接部署為無人值守的安全警報系統。
+## Device compatibility
 
-## 驗證
+- The shared session requests CameraX `Preview + ImageAnalysis + VideoCapture`
+  concurrently. **Not all hardware combinations support this**.
+- If the three-use-case bind fails, the application retains live WebRTC preview
+  but reports a smart recording error. Event clips cannot be guaranteed on
+  unsupported hardware; validate on the actual Android phone.
+- CameraX Night Extension rebind is disabled while simultaneous event recording
+  is active to avoid cutting clips mid-recording.
+- Detection uses scene-level classification, not a dedicated object detector.
+  Small, partially hidden, or unusual animal classes may be missed. Human/animal
+  labels use a finite allowlist and confidence threshold.
+- Video clips have no audio. No automatic clip retention policy, motion alerts,
+  or remote recording history UI is implemented.
 
-```sh
-./gradlew :app:testDebugUnitTest :app:assembleDebug
-```
+## Testing
 
-實機測試請涵蓋：空畫面→相機關閉→10 秒後再掃描；人物及貓狗進入畫面；
-辨識到目標後開始錄影、離開超過 4 秒停止；背景運作；主動停止時檔案完成；
-低光源、旋轉裝置、儲存空間不足和 CameraX 不支援的硬體。
+Run `./gradlew :app:assembleDebug :app:testDebugUnitTest`.
+Also verify on Android hardware:
 
-## 相關程式
+- Live WebRTC viewer shows video throughout event recording;
+- person and animal labels trigger MP4;
+- clip ends after 4 seconds without a label;
+- no viewers → classification continues;
+- cross-network MacBook/iPhone viewer can connect while recording;
+- Android stops the camera gracefully on exiting Camera Mode;
+- 30+ minute capture with heat, orientation, torch and poor lighting;
+- unsupported camera combinations fall back to live view with a visible error.
 
-- `service/SmartRecordingPolicy.kt`: 偵測類別與週期策略
-- `service/SmartRecordingService.kt`: CameraX、ML Kit、事件錄影與前景服務
-- `ui/smart/SmartRecordingScreen.kt`: 開始／停止與影片清單
-- `service/SmartRecordingPolicyTest.kt`: 策略單元測試
+**Compilation and real-device simultaneous streaming/recording must be verified
+before relying on the feature for security-critical monitoring.**

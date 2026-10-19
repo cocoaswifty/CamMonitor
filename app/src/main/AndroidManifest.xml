@@ -49,11 +49,6 @@
             android:foregroundServiceType="camera"
             tools:targetApi="29" />
 
-        <service
-            android:name=".service.SmartRecordingService"
-            android:exported="false"
-            android:foregroundServiceType="camera" />
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

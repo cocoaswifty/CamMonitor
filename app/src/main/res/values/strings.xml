@@ -154,4 +154,24 @@
     <string name="smart_record_refresh">Refresh</string>
     <string name="smart_record_play">Play video</string>
     <string name="smart_record_share">Share video</string>
+    <!-- Cross-platform browser viewer -->
+    <string name="web_pairing_title">Pair Web Viewer</string>
+    <string name="web_pairing_hint">Open the secure QR link on your MacBook or iPhone, then tap Pair in that browser. Leave this screen open until pairing succeeds.</string>
+    <string name="web_pairing_expiry">Invitation expires in %1$02d:%2$02d</string>
+    <string name="web_pairing_qr">Web Viewer pairing QR code</string>
+    <string name="web_pairing_copy">Copy link</string>
+    <string name="web_pairing_share">Share link</string>
+    <string name="web_pairing_private_notice">Anyone with this link during the next five minutes may request one pairing. Treat it like a password and only share privately.</string>
+    <string name="web_pairing_turn_settings">TURN relay settings</string>
+    <string name="web_pairing_turn_enabled">TURN relay configured for remote networks. Re-pair existing browsers after changing TURN.</string>
+    <string name="web_pairing_turn_optional">No TURN relay configured. Cross-network P2P may work through STUN, but some networks will fail.</string>
+    <string name="web_pairing_pages_setup">The Web Viewer must first be published via GitHub Pages (Settings → Pages → GitHub Actions). See docs/WebViewer.md.</string>
+    <string name="web_pairing_full">Camera supports at most two paired viewers. Remove an existing viewer first.</string>
+    <string name="web_pairing_send_failed">Unable to deliver confirmation. Please retry pairing.</string>
+    <string name="web_pairing_save">Save</string>
+    <string name="smart_record_shared_info">Smart event recording and remote WebRTC live viewing share one camera. The frame is classified approximately every 10 seconds while idle; a matching person/animal triggers MP4 recording until absent for 4 seconds. The camera remains open to allow immediate remote viewing.</string>
+    <string name="smart_record_enable">Enable smart event recording</string>
+    <string name="smart_record_shared_enabled">When Camera Mode is next started, event recording and remote live viewing run together. Continuous camera use consumes more power.</string>
+    <string name="smart_record_shared_disabled">When disabled, Camera Mode provides live WebRTC viewing without smart recording.</string>
+    <string name="smart_record_start_shared_monitor">Start camera and remote viewer</string>
 </resources>

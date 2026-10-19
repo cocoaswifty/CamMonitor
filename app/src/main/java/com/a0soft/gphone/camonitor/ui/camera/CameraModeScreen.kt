@@ -39,6 +39,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.data.camera.SmartEventSettings
+import com.a0soft.gphone.camonitor.data.camera.SharedEventRecorder
 import com.a0soft.gphone.camonitor.service.CameraMonitorService
 import com.a0soft.gphone.camonitor.service.CameraStreamingState
 import com.a0soft.gphone.camonitor.ui.theme.StatusLive
@@ -67,6 +69,8 @@ fun CameraModeScreen(
     val isTorchOn by app.torchManager.isTorchOn.collectAsState()
     val isNightModeActive by app.webRtcManager.isNightModeActive.collectAsState()
     val streamFps by app.webRtcManager.streamFps.collectAsState()
+    val smartState by SharedEventRecorder.state.collectAsState()
+    val smartEnabled = remember { SmartEventSettings.isEnabled(context) }
 
     var isBlackScreenActive by remember { mutableStateOf(false) }
     var idleSeconds by remember { mutableStateOf(0) }
@@ -139,7 +143,10 @@ fun CameraModeScreen(
 
     // 60-Second local inactivity timer for OLED black screen
     LaunchedEffect(isBlackScreenActive, streamingState) {
-        if (!isBlackScreenActive && streamingState == CameraStreamingState.STREAMING) {
+        if (!isBlackScreenActive && (
+                streamingState == CameraStreamingState.STREAMING ||
+                (smartEnabled && streamingState == CameraStreamingState.WAITING_FOR_VIEWERS)
+            )) {
             idleSeconds = 0
             while (idleSeconds < 60) {
                 delay(1000L)
@@ -268,6 +275,19 @@ fun CameraModeScreen(
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (smartEnabled) {
+                                Text(
+                                    stringResource(
+                                        if (smartState == SharedEventRecorder.State.RECORDING)
+                                            R.string.smart_record_recording
+                                        else R.string.smart_record_enable
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (smartState == SharedEventRecorder.State.RECORDING)
+                                        MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.primary
+                                )
+                            }
                             // Viewer Count
                             Surface(
                                 shape = CircleShape,
