@@ -167,7 +167,11 @@ fun WebViewerPairingScreen(onPaired: () -> Unit, onBack: () -> Unit) {
             Text(stringResource(R.string.web_pairing_hint))
             Text(stringResource(R.string.web_pairing_expiry, seconds / 60, seconds % 60))
             Surface(color = Color.White, modifier = Modifier.size(290.dp)) {
-                Image(qr, contentDescription = stringResource(R.string.web_pairing_qr))
+                if (qr != null) {
+                    Image(bitmap = qr, contentDescription = stringResource(R.string.web_pairing_qr))
+                } else {
+                    CircularProgressIndicator()
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
