@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -29,6 +30,8 @@ import com.a0soft.gphone.camonitor.data.webrtc.TurnSettings
 import com.a0soft.gphone.camonitor.service.SmartRecordingService
 import com.a0soft.gphone.camonitor.ui.common.QrUtils
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 private const val WEB_VIEWER_URL = "https://cocoaswifty.github.io/CamMonitor/web-viewer/"
@@ -86,12 +89,23 @@ fun WebViewerPairingScreen(onPaired: () -> Unit, onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) {
+        // A previously stopped CameraMonitorService may race with opening this
+        // screen and disconnect MQTT. Keep pairing listener available.
+        launch {
+            while (isActive) {
+                if (!app.signalingClient.isConnectedFlow.value) {
+                    app.signalingClient.startListening()
+                }
+                delay(4000L)
+            }
+        }
         app.signalingClient.startListening()
         app.signalingClient.incomingMessages.collect { (sender, message) ->
             if (message !is SignalingMessage.PairRequest) return@collect
             if (repo.getActivePairingOtp() == null) return@collect
             if (sender != message.pbDeviceId) return@collect
-            if (repo.getPairedViewers().size >= SecurityRepository.MAX_PAIRED_VIEWERS) {
+            if (repo.getPairedViewers().size >= SecurityRepository.MAX_PAIRED_VIEWERS &&
+                repo.getPairedDevice(sender) == null) {
                 error = context.getString(R.string.web_pairing_full)
                 return@collect
             }
@@ -199,6 +213,7 @@ fun WebViewerPairingScreen(onPaired: () -> Unit, onBack: () -> Unit) {
                     OutlinedTextField(url, { url = it }, label = { Text("turn:host:3478") })
                     OutlinedTextField(user, { user = it }, label = { Text("TURN username") })
                     OutlinedTextField(pass, { pass = it },
+                        visualTransformation = PasswordVisualTransformation(),
                         label = { Text("TURN credential") })
                 }
             },
