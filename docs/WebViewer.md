@@ -82,7 +82,7 @@ Use **Manage Devices** on Android to revoke paired browsers. The browser's
   the **URL fragment** to configure the browser's ICE relay. Keep that
   fragment private; treat the entire link as a secret.
 - There is no recording, video upload, or cloud storage in the browser client.
-  The Android Smart Recording feature remains a **separate mode**.
+  The Android Smart Recording feature shares the CameraX source with live WebRTC.\n  See `docs/SmartRecording.md`.
 
 ## Limits / development validation
 
