@@ -390,8 +390,8 @@ class CameraXVideoCapturer(
                 )
             } catch (error: Exception) {
                 AppLogger.e(tag, "Shared smart event pipeline unsupported; keeping live view", error)
-                recorder.onUnsupportedCamera(error)
                 recorder.prepareForUnbind()
+                recorder.onUnsupportedCamera(error)
                 provider.unbindAll()
                 provider.bindToLifecycle(capturerLifecycleOwner, targetSelector, newPreview)
             }
