@@ -27,7 +27,6 @@ import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.data.webrtc.TurnSettings
-import com.a0soft.gphone.camonitor.service.SmartRecordingService
 import com.a0soft.gphone.camonitor.ui.common.QrUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive

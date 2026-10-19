@@ -34,8 +34,10 @@ jobs:
           java-version: '17'
           cache: gradle
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Install Android SDK platform
-        run: sdkmanager "platforms;android-37"
+        run: sdkmanager "platforms;android-37.0"
       - name: Compile Android and run unit tests
         run: |
           chmod +x ./gradlew
