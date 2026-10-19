@@ -36,7 +36,8 @@ fun HomeScreen(
     onPairNewCamera: () -> Unit,
     onOpenPairedDevices: () -> Unit,
     onOpenLogs: () -> Unit,
-    onOpenAbout: () -> Unit
+    onOpenAbout: () -> Unit,
+    onOpenSmartRecording: () -> Unit
 ) {
     val context = LocalContext.current
     val securityRepo = remember { CamMonitorApp.instance.securityRepository }
@@ -275,6 +276,9 @@ fun HomeScreen(
                     }
                     IconButton(onClick = onOpenPairedDevices) {
                         Icon(Icons.Default.Devices, contentDescription = stringResource(R.string.paired_devices))
+                    }
+                    IconButton(onClick = onOpenSmartRecording) {
+                        Icon(Icons.Default.Videocam, contentDescription = stringResource(R.string.smart_record_title))
                     }
                     IconButton(onClick = onOpenAbout) {
                         Icon(Icons.Default.Info, contentDescription = stringResource(R.string.about_title))
