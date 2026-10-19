@@ -20,6 +20,8 @@ import com.a0soft.gphone.camonitor.ui.home.HomeScreen
 import com.a0soft.gphone.camonitor.ui.log.LogViewerScreen
 import com.a0soft.gphone.camonitor.ui.pairing.CameraPairingScreen
 import com.a0soft.gphone.camonitor.ui.pairing.ViewerPairingScreen
+import com.a0soft.gphone.camonitor.ui.smart.SmartRecordingScreen
+import com.a0soft.gphone.camonitor.service.SmartRecordingService
 import com.a0soft.gphone.camonitor.ui.theme.CamMonitorTheme
 import com.a0soft.gphone.camonitor.ui.viewer.ViewerModeScreen
 
@@ -27,6 +29,7 @@ enum class AppScreen {
     HOME,
     CAMERA_PAIRING,
     CAMERA_MODE,
+    SMART_RECORDING,
     VIEWER_PAIRING,
     VIEWER_MODE,
     MANAGE_DEVICES,
@@ -131,27 +134,47 @@ class MainActivity : ComponentActivity() {
             AppScreen.HOME -> {
                 HomeScreen(
                     onStartCameraMode = {
-                        val viewerCount = securityRepo.getPairedViewers().size
-                        if (viewerCount == 0) {
-                            navigateTo(AppScreen.CAMERA_PAIRING)
+                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
+                            navigateTo(AppScreen.SMART_RECORDING)
                         } else {
-                            navigateTo(AppScreen.CAMERA_MODE)
+                            val viewerCount = securityRepo.getPairedViewers().size
+                            if (viewerCount == 0) {
+                                navigateTo(AppScreen.CAMERA_PAIRING)
+                            } else {
+                                navigateTo(AppScreen.CAMERA_MODE)
+                            }
                         }
                     },
                     onPairNewViewer = {
-                        navigateTo(AppScreen.CAMERA_PAIRING)
+                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
+                            navigateTo(AppScreen.SMART_RECORDING)
+                        } else {
+                            navigateTo(AppScreen.CAMERA_PAIRING)
+                        }
                     },
                     onStartViewerMode = { deviceId ->
-                        selectedCameraDeviceId = deviceId
-                        navigateTo(AppScreen.VIEWER_MODE)
+                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
+                            navigateTo(AppScreen.SMART_RECORDING)
+                        } else {
+                            selectedCameraDeviceId = deviceId
+                            navigateTo(AppScreen.VIEWER_MODE)
+                        }
                     },
                     onPairNewCamera = {
-                        navigateTo(AppScreen.VIEWER_PAIRING)
+                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
+                            navigateTo(AppScreen.SMART_RECORDING)
+                        } else {
+                            navigateTo(AppScreen.VIEWER_PAIRING)
+                        }
                     },
                     onOpenPairedDevices = { navigateTo(AppScreen.MANAGE_DEVICES) },
                     onOpenLogs = { navigateTo(AppScreen.LOGS) },
-                    onOpenAbout = { navigateTo(AppScreen.ABOUT) }
+                    onOpenAbout = { navigateTo(AppScreen.ABOUT) },
+                    onOpenSmartRecording = { navigateTo(AppScreen.SMART_RECORDING) }
                 )
+            }
+            AppScreen.SMART_RECORDING -> {
+                SmartRecordingScreen(onBack = { navigateBack() })
             }
             AppScreen.CAMERA_PAIRING -> {
                 CameraPairingScreen(
