@@ -22,7 +22,7 @@ import com.a0soft.gphone.camonitor.ui.pairing.WebViewerPairingScreen
 import com.a0soft.gphone.camonitor.ui.pairing.CameraPairingScreen
 import com.a0soft.gphone.camonitor.ui.pairing.ViewerPairingScreen
 import com.a0soft.gphone.camonitor.ui.smart.SmartRecordingScreen
-import com.a0soft.gphone.camonitor.service.SmartRecordingService
+import com.a0soft.gphone.camonitor.data.camera.SmartEventSettings
 import com.a0soft.gphone.camonitor.ui.theme.CamMonitorTheme
 import com.a0soft.gphone.camonitor.ui.viewer.ViewerModeScreen
 
@@ -136,54 +136,31 @@ class MainActivity : ComponentActivity() {
             AppScreen.HOME -> {
                 HomeScreen(
                     onStartCameraMode = {
-                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
-                            navigateTo(AppScreen.SMART_RECORDING)
-                        } else {
-                            val viewerCount = securityRepo.getPairedViewers().size
-                            if (viewerCount == 0) {
-                                navigateTo(AppScreen.CAMERA_PAIRING)
-                            } else {
-                                navigateTo(AppScreen.CAMERA_MODE)
-                            }
-                        }
-                    },
-                    onPairNewViewer = {
-                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
-                            navigateTo(AppScreen.SMART_RECORDING)
-                        } else {
+                        val count = securityRepo.getPairedViewers().size
+                        if (count == 0 && !SmartEventSettings.isEnabled(this@MainActivity)) {
                             navigateTo(AppScreen.CAMERA_PAIRING)
+                        } else {
+                            navigateTo(AppScreen.CAMERA_MODE)
                         }
                     },
+                    onPairNewViewer = { navigateTo(AppScreen.CAMERA_PAIRING) },
                     onStartViewerMode = { deviceId ->
-                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
-                            navigateTo(AppScreen.SMART_RECORDING)
-                        } else {
-                            selectedCameraDeviceId = deviceId
-                            navigateTo(AppScreen.VIEWER_MODE)
-                        }
+                        selectedCameraDeviceId = deviceId
+                        navigateTo(AppScreen.VIEWER_MODE)
                     },
-                    onPairNewCamera = {
-                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
-                            navigateTo(AppScreen.SMART_RECORDING)
-                        } else {
-                            navigateTo(AppScreen.VIEWER_PAIRING)
-                        }
-                    },
+                    onPairNewCamera = { navigateTo(AppScreen.VIEWER_PAIRING) },
                     onOpenPairedDevices = { navigateTo(AppScreen.MANAGE_DEVICES) },
                     onOpenLogs = { navigateTo(AppScreen.LOGS) },
                     onOpenAbout = { navigateTo(AppScreen.ABOUT) },
                     onOpenSmartRecording = { navigateTo(AppScreen.SMART_RECORDING) },
-                    onOpenWebViewerPairing = {
-                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
-                            navigateTo(AppScreen.SMART_RECORDING)
-                        } else {
-                            navigateTo(AppScreen.WEB_VIEWER_PAIRING)
-                        }
-                    }
+                    onOpenWebViewerPairing = { navigateTo(AppScreen.WEB_VIEWER_PAIRING) }
                 )
             }
             AppScreen.SMART_RECORDING -> {
-                SmartRecordingScreen(onBack = { navigateBack() })
+                SmartRecordingScreen(
+                    onBack = { navigateBack() },
+                    onStartCameraMode = { navigateTo(AppScreen.CAMERA_MODE) }
+                )
             }
             AppScreen.WEB_VIEWER_PAIRING -> {
                 WebViewerPairingScreen(
