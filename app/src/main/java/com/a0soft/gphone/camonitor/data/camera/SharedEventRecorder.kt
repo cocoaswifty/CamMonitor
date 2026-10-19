@@ -69,6 +69,7 @@ class SharedEventRecorder(private val context: Context) {
     private var recording: Recording? = null
     private var active = false
     private var stopping = false
+    private var bindGeneration = 0L
     private var recordingStartedAt = 0L
     private var lastSeenAt = -1L
     private var lastCheckedAt = 0L
@@ -161,21 +162,28 @@ class SharedEventRecorder(private val context: Context) {
             SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date()) + ".mp4"
         val file = File(dir, filename)
         try {
+            val recordingGeneration = bindGeneration
             recordingStartedAt = SystemClock.elapsedRealtime()
             recording = video.output.prepareRecording(
                 context, FileOutputOptions.Builder(file).build()
             ).start(ContextCompat.getMainExecutor(context)) { event ->
                 if (event is VideoRecordEvent.Finalize) {
-                    recording = null
-                    stopping = false
+                    if (recordingGeneration == bindGeneration) {
+                        recording = null
+                        stopping = false
+                    }
                     if (event.hasError()) {
                         file.delete()
-                        state.value = State.ERROR
-                        errorMessage.value = "Recording finalize error: ${event.error}"
+                        if (recordingGeneration == bindGeneration) {
+                            state.value = State.ERROR
+                            errorMessage.value = "Recording finalize error: ${event.error}"
+                        }
                         AppLogger.w("SharedEventRecorder", "Video finalize error ${event.error}")
                     } else {
                         latestClip.value = file.absolutePath
-                        if (active) state.value = State.SCANNING
+                        if (recordingGeneration == bindGeneration && active) {
+                            state.value = State.SCANNING
+                        }
                         AppLogger.i("SharedEventRecorder", "Saved ${file.name}")
                     }
                 }
@@ -209,6 +217,7 @@ class SharedEventRecorder(private val context: Context) {
 
     /** CameraX rebind (night mode etc.) finalizes any clip first. */
     fun prepareForUnbind() {
+        bindGeneration++
         active = false
         handler.removeCallbacks(checkStop)
         analysis?.clearAnalyzer()
