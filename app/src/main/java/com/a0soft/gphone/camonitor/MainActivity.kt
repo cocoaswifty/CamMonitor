@@ -18,6 +18,7 @@ import com.a0soft.gphone.camonitor.ui.camera.CameraModeScreen
 import com.a0soft.gphone.camonitor.ui.devices.ManageDevicesScreen
 import com.a0soft.gphone.camonitor.ui.home.HomeScreen
 import com.a0soft.gphone.camonitor.ui.log.LogViewerScreen
+import com.a0soft.gphone.camonitor.ui.pairing.WebViewerPairingScreen
 import com.a0soft.gphone.camonitor.ui.pairing.CameraPairingScreen
 import com.a0soft.gphone.camonitor.ui.pairing.ViewerPairingScreen
 import com.a0soft.gphone.camonitor.ui.smart.SmartRecordingScreen
@@ -28,6 +29,7 @@ import com.a0soft.gphone.camonitor.ui.viewer.ViewerModeScreen
 enum class AppScreen {
     HOME,
     CAMERA_PAIRING,
+    WEB_VIEWER_PAIRING,
     CAMERA_MODE,
     SMART_RECORDING,
     VIEWER_PAIRING,
@@ -170,11 +172,27 @@ class MainActivity : ComponentActivity() {
                     onOpenPairedDevices = { navigateTo(AppScreen.MANAGE_DEVICES) },
                     onOpenLogs = { navigateTo(AppScreen.LOGS) },
                     onOpenAbout = { navigateTo(AppScreen.ABOUT) },
-                    onOpenSmartRecording = { navigateTo(AppScreen.SMART_RECORDING) }
+                    onOpenSmartRecording = { navigateTo(AppScreen.SMART_RECORDING) },
+                    onOpenWebViewerPairing = {
+                        if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
+                            navigateTo(AppScreen.SMART_RECORDING)
+                        } else {
+                            navigateTo(AppScreen.WEB_VIEWER_PAIRING)
+                        }
+                    }
                 )
             }
             AppScreen.SMART_RECORDING -> {
                 SmartRecordingScreen(onBack = { navigateBack() })
+            }
+            AppScreen.WEB_VIEWER_PAIRING -> {
+                WebViewerPairingScreen(
+                    onPaired = {
+                        if (backStack.isNotEmpty()) backStack.removeAt(backStack.size - 1)
+                        backStack.add(AppScreen.CAMERA_MODE)
+                    },
+                    onBack = { navigateBack() }
+                )
             }
             AppScreen.CAMERA_PAIRING -> {
                 CameraPairingScreen(
