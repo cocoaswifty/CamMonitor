@@ -138,4 +138,20 @@
     <string name="about_open_source_notice">本專案採 Apache 2.0 授權條款開放原始碼。</string>
     <string name="about_view_on_github">在 GitHub 上檢視專案</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <!-- 裝置本機智慧事件錄影 -->
+    <string name="smart_record_title">智慧事件錄影</string>
+    <string name="smart_record_info">無目標時關閉相機，10 秒後再次開啟檢查。辨識到人物或動物便開始錄影，連續 4 秒未再辨識到才停止。此模式與即時監看分開運作。</string>
+    <string name="smart_record_off">已停止</string>
+    <string name="smart_record_scanning">正在開啟相機辨識…</string>
+    <string name="smart_record_recording">偵測到目標，錄影中</string>
+    <string name="smart_record_sleep">相機已關閉，10 秒後再次檢查</string>
+    <string name="smart_record_error">偵測錯誤，稍後自動重試</string>
+    <string name="smart_record_start">啟動智慧錄影</string>
+    <string name="smart_record_stop">停止智慧錄影</string>
+    <string name="smart_record_camera_permission">請先在設定中允許相機權限。</string>
+    <string name="smart_record_local_only">影片僅保存在本機，不會上傳。人物或動物太小、遭遮蔽時可能無法辨識。</string>
+    <string name="smart_record_clips">已儲存的影片</string>
+    <string name="smart_record_refresh">重新整理</string>
+    <string name="smart_record_play">播放</string>
+    <string name="smart_record_share">分享影片</string>
 </resources>
