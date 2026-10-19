@@ -169,4 +169,9 @@
     <string name="web_pairing_full">攝影機最多配對兩台觀看端，請先移除一台。</string>
     <string name="web_pairing_send_failed">無法送出配對確認，請重新嘗試。</string>
     <string name="web_pairing_save">儲存</string>
+    <string name="smart_record_shared_info">智慧人物／動物事件錄影與遠端 WebRTC 即時觀看使用同一個攝影機。開啟後約每 10 秒分析一次畫面，發現目標後錄影；連續 4 秒未見目標便結束該段影片。為保持遠端隨時可連線，智慧監控期間攝影機不會每 10 秒實際關閉。</string>
+    <string name="smart_record_enable">啟用智慧事件錄影</string>
+    <string name="smart_record_shared_enabled">啟用後，下一次進入攝影機模式會同時進行即時監看與智慧錄影。攝影機持續開啟，耗電與發熱可能增加。</string>
+    <string name="smart_record_shared_disabled">停用智慧事件錄影後，攝影機模式只提供即時監看。</string>
+    <string name="smart_record_start_shared_monitor">啟動攝影機與遠端監看</string>
 </resources>
