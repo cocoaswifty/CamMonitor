@@ -137,12 +137,12 @@ class MainActivity : ComponentActivity() {
                         if (SmartRecordingService.phase.value != SmartRecordingService.Phase.OFF) {
                             navigateTo(AppScreen.SMART_RECORDING)
                         } else {
-                        val viewerCount = securityRepo.getPairedViewers().size
-                        if (viewerCount == 0) {
-                            navigateTo(AppScreen.CAMERA_PAIRING)
-                        } else {
-                            navigateTo(AppScreen.CAMERA_MODE)
-                        }
+                            val viewerCount = securityRepo.getPairedViewers().size
+                            if (viewerCount == 0) {
+                                navigateTo(AppScreen.CAMERA_PAIRING)
+                            } else {
+                                navigateTo(AppScreen.CAMERA_MODE)
+                            }
                         }
                     },
                     onPairNewViewer = {
