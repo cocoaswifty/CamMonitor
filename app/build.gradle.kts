@@ -96,6 +96,7 @@ dependencies {
     testImplementation("org.json:json:20240303")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.lifecycle:lifecycle-service:2.11.0")
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
@@ -114,12 +115,15 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.extensions)
+    implementation("androidx.camera:camera-video:1.4.1")
 
     // QR Code
     implementation(libs.zxing.core)
 
     // Security
     implementation(libs.androidx.security.crypto)
+    // Bundled on-device image labeling model; no cloud inference.
+    implementation("com.google.mlkit:image-labeling:17.0.9")
 
     // Networking: MQTT & WebRTC
     implementation(libs.hivemq.mqtt.client)
