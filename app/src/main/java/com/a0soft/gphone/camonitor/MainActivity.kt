@@ -13,6 +13,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.a0soft.gphone.camonitor.ui.about.AboutScreen
 import com.a0soft.gphone.camonitor.ui.camera.CameraModeScreen
 import com.a0soft.gphone.camonitor.ui.devices.ManageDevicesScreen
 import com.a0soft.gphone.camonitor.ui.home.HomeScreen
@@ -29,7 +30,8 @@ enum class AppScreen {
     VIEWER_PAIRING,
     VIEWER_MODE,
     MANAGE_DEVICES,
-    LOGS
+    LOGS,
+    ABOUT
 }
 
 class MainActivity : ComponentActivity() {
@@ -147,7 +149,8 @@ class MainActivity : ComponentActivity() {
                         navigateTo(AppScreen.VIEWER_PAIRING)
                     },
                     onOpenPairedDevices = { navigateTo(AppScreen.MANAGE_DEVICES) },
-                    onOpenLogs = { navigateTo(AppScreen.LOGS) }
+                    onOpenLogs = { navigateTo(AppScreen.LOGS) },
+                    onOpenAbout = { navigateTo(AppScreen.ABOUT) }
                 )
             }
             AppScreen.CAMERA_PAIRING -> {
@@ -189,6 +192,11 @@ class MainActivity : ComponentActivity() {
             }
             AppScreen.LOGS -> {
                 LogViewerScreen(
+                    onBack = { navigateBack() }
+                )
+            }
+            AppScreen.ABOUT -> {
+                AboutScreen(
                     onBack = { navigateBack() }
                 )
             }

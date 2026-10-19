@@ -130,4 +130,12 @@
     <string name="night_mode_auto">自動</string>
     <string name="night_mode_night">夜間</string>
     <string name="night_mode_normal">正常</string>
+
+    <!-- About Screen -->
+    <string name="about_title">關於</string>
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_description">將閒置的舊 Android 手機化身為居家安全監控攝影機。具備端對端加密直接連線、智慧待命防發熱與雙向語音對講功能。</string>
+    <string name="about_open_source_notice">本專案採 Apache 2.0 授權條款開放原始碼。</string>
+    <string name="about_view_on_github">在 GitHub 上檢視專案</string>
+    <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
 </resources>

@@ -35,7 +35,8 @@ fun HomeScreen(
     onStartViewerMode: (deviceId: String) -> Unit,
     onPairNewCamera: () -> Unit,
     onOpenPairedDevices: () -> Unit,
-    onOpenLogs: () -> Unit
+    onOpenLogs: () -> Unit,
+    onOpenAbout: () -> Unit
 ) {
     val context = LocalContext.current
     val securityRepo = remember { CamMonitorApp.instance.securityRepository }
@@ -264,7 +265,7 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium) },
+                title = { Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge) },
                 actions = {
                     IconButton(onClick = { showLanguageDialog = true }) {
                         Icon(Icons.Default.Language, contentDescription = stringResource(R.string.cd_language_settings))
@@ -274,6 +275,9 @@ fun HomeScreen(
                     }
                     IconButton(onClick = onOpenPairedDevices) {
                         Icon(Icons.Default.Devices, contentDescription = stringResource(R.string.paired_devices))
+                    }
+                    IconButton(onClick = onOpenAbout) {
+                        Icon(Icons.Default.Info, contentDescription = stringResource(R.string.about_title))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

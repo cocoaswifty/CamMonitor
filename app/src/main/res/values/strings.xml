@@ -130,4 +130,12 @@
     <string name="night_mode_auto">Auto</string>
     <string name="night_mode_night">Night</string>
     <string name="night_mode_normal">Normal</string>
+
+    <!-- About Screen -->
+    <string name="about_title">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_description">Turn your spare Android phone into a private, zero-account home security camera with end-to-end encryption, smart battery protection, and 2-way walkie-talkie intercom.</string>
+    <string name="about_open_source_notice">This app is open source under the Apache 2.0 License.</string>
+    <string name="about_view_on_github">View on GitHub</string>
+    <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
 </resources>

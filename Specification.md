@@ -8,7 +8,7 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
   * **Application ID / Package Name:** `com.a0soft.gphone.camonitor`
-  * **Current App Version:** `1.0.2` (`versionCode = 3`)
+  * **Current App Version:** `1.0.3` (`versionCode = 4`)
   * **Minimum SDK (`minSdk`):** `28` (Android 9 Pie)
   * **Target SDK (`targetSdk`):** `37` (Android 17)
   * **Compile SDK (`compileSdk`):** `37`
@@ -201,6 +201,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * `IconButton(Icons.Default.Language)` $\to$ Opens **Language Selector Menu** (`"System Default"`, `"English"`, `"繁體中文"`).
     * `IconButton(Icons.Default.Description)` $\to$ Opens **In-App Log Viewer**.
     * `IconButton(Icons.Default.Devices)` $\to$ Opens **Paired Devices Management**.
+    * `IconButton(Icons.Default.Info)` $\to$ Opens **About Screen** (`AppScreen.ABOUT`).
 * **Body Layout & Adaptive Orientation:**
   * Enabled with vertical scroll (`Modifier.verticalScroll(rememberScrollState())`) to guarantee complete access across all screen densities and font scales.
   * **Portrait Mode:** Cards are centered vertically in a `Column` with 24dp vertical spacing.
@@ -431,6 +432,24 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * `INFO`: White / Light Gray (`#E0E0E0`).
     * `DEBUG`: Dim Gray (`#757575`).
 * **Auto-Scroll Behavior:** Floating "Scroll to Bottom" button appears when the user scrolls up.
+
+---
+
+### 5.7 Screen 7: About Screen
+* **Top Bar:**
+  * Title: `"About"` (HeadlineSmall).
+  * Navigation icon: Back arrow (`IconButton(Icons.AutoMirrored.Filled.ArrowBack)`).
+* **Header Branding:**
+  * App Icon: Layered vector squircle (96dp, dark background `#121212` with cyan/emerald foreground).
+  * App Title: `"CamMonitor"` (HeadlineMedium, bold).
+  * Version String: `"Version 1.0.3"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
+* **Application Summary Card (`ElevatedCard`):**
+  * Short Description: Multi-line overview emphasizing zero-account, P2P encryption, OLED power management, and 2-way talkback.
+  * Open Source Notice: License declaration (Apache License 2.0).
+  * External GitHub Link Button:
+    * Label: `"View on GitHub"` (`Button` with `Icons.Default.OpenInNew`).
+    * Triggers external `Intent.ACTION_VIEW` targeting `https://github.com/samlu/CamMonitor`.
+  * Plaintext Repository URL display (`BodySmall`, muted outline color).
 
 ---
 
