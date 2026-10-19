@@ -86,10 +86,25 @@ class WebRtcManager(private val context: Context) {
     private var viewerAudioTrack: AudioTrack? = null
     private var isPttActive = false
 
-    private val iceServers = listOf(
-        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
-    )
+    /** Re-read TURN settings per connection; credentials are not committed to the repo. */
+    private fun iceServers(): List<PeerConnection.IceServer> {
+        val servers = mutableListOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
+        )
+        try {
+            val turn = TurnSettings.load(context)
+            if (turn.isConfigured()) {
+                servers += PeerConnection.IceServer.builder(turn.uri.trim())
+                    .setUsername(turn.username)
+                    .setPassword(turn.credential)
+                    .createIceServer()
+            }
+        } catch (e: Exception) {
+            AppLogger.e(tag, "Encrypted TURN configuration unavailable", e)
+        }
+        return servers
+    }
 
     init {
         initPeerConnectionFactory()
@@ -398,9 +413,10 @@ class WebRtcManager(private val context: Context) {
             return null
         }
         closePeer(peerId, keepPendingCandidates = true)
-        AppLogger.i(tag, "Creating new PeerConnection for $peerId with ${iceServers.size} ICE servers")
+        val configuredServers = iceServers()
+        AppLogger.i(tag, "Creating new PeerConnection for $peerId with ${configuredServers.size} ICE servers")
 
-        val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
+        val rtcConfig = PeerConnection.RTCConfiguration(configuredServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
         }
