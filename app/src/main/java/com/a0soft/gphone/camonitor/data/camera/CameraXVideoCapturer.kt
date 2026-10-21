@@ -112,7 +112,6 @@ class CameraXVideoCapturer(
     private var preview: Preview? = null
     private var eventRecorder: SharedEventRecorder? = null
     var onRecordingChanged: (Boolean) -> Unit = {}
-    var onNoTarget: () -> Unit = {}
     private var disposed = false
     private var surface: Surface? = null
 
@@ -216,7 +215,7 @@ class CameraXVideoCapturer(
                 val initialRotation = getDeviceRotation()
                 currentTargetRotation = initialRotation
                 if (SmartEventSettings.isEnabled(context)) {
-                    eventRecorder = SharedEventRecorder(context, onRecordingChanged, onNoTarget)
+                    eventRecorder = SharedEventRecorder(context, onRecordingChanged)
                 }
 
                 // Start WebRTC listening to incoming OpenGL texture frames

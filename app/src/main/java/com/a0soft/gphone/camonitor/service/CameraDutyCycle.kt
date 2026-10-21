@@ -80,10 +80,6 @@ class CameraDutyCycle(
         if (value || hasViewers()) reportMode() else sleep()
     }
 
-    fun noTarget() {
-        if (started && cameraOpen && !recording && !hasViewers()) sleep()
-    }
-
     fun cameraFailed() {
         if (!started) return
         // Retry an unavailable camera; do not mistake a failure for a negative detection.

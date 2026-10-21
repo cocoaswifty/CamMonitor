@@ -30,8 +30,8 @@ class CameraStandbyStateTest {
 
     @Test fun noTargetClosesHardwareAndWaitsTenSecondsBeforeReopening() = runTest {
         val c = Camera(this)
+        advanceTimeBy(4_000); runCurrent()
         assertEquals(1, c.opens)
-        c.duty.noTarget()
         runCurrent()
         assertEquals(1, c.closes)
         assertEquals(CameraDutyCycle.Mode.SLEEPING, c.mode)
@@ -39,15 +39,14 @@ class CameraStandbyStateTest {
         assertEquals(1, c.opens)
         advanceTimeBy(1); runCurrent()
         assertEquals(2, c.opens)
-        c.duty.noTarget()
-        runCurrent()
+        advanceTimeBy(4_000); runCurrent()
         advanceTimeBy(10_000); runCurrent()
         assertEquals(3, c.opens)
     }
 
     @Test fun sleepIntervalStartsAfterHardwareReportsClosed() = runTest {
         val c = Camera(this, delayedClose = true)
-        c.duty.noTarget()
+        advanceTimeBy(4_000); runCurrent()
         advanceTimeBy(15_000); runCurrent()
         assertEquals(1, c.opens)
         c.finishClose!!()
@@ -61,7 +60,6 @@ class CameraStandbyStateTest {
     @Test fun targetKeepsRecordingUntilFinalizeEvenWhenNoTargetArrives() = runTest {
         val c = Camera(this)
         c.duty.recordingChanged(true)
-        c.duty.noTarget()
         runCurrent()
         advanceTimeBy(60_000); runCurrent()
         assertEquals(0, c.closes)
@@ -72,11 +70,10 @@ class CameraStandbyStateTest {
 
     @Test fun offerDuringSleepWakesWithoutAndroidInteraction() = runTest {
         val c = Camera(this)
-        c.duty.noTarget()
+        advanceTimeBy(4_000); runCurrent()
         runCurrent()
         advanceTimeBy(2_000)
         assertTrue(c.duty.requestViewer("browser"))
-        c.duty.noTarget()
         c.duty.viewerConnected("browser")
         advanceTimeBy(60_000); runCurrent()
         assertEquals(2, c.opens)
@@ -86,7 +83,7 @@ class CameraStandbyStateTest {
 
     @Test fun offerDuringHardwareCloseInvalidatesOldSleepCallback() = runTest {
         val c = Camera(this, delayedClose = true)
-        c.duty.noTarget()
+        advanceTimeBy(4_000); runCurrent()
         val oldClose = c.finishClose!!
         assertTrue(c.duty.requestViewer("browser"))
         c.duty.viewerConnected("browser")
@@ -99,7 +96,6 @@ class CameraStandbyStateTest {
     @Test fun pendingOfferProtectsHandshakeButExpiresWithoutAnswer() = runTest {
         val c = Camera(this)
         c.duty.requestViewer("browser")
-        c.duty.noTarget()
         runCurrent()
         advanceTimeBy(29_999); runCurrent()
         assertEquals(0, c.closes)
@@ -127,7 +123,6 @@ class CameraStandbyStateTest {
         c.duty.requestViewer("browser")
         c.duty.viewerConnected("browser")
         c.duty.recordingChanged(false)
-        c.duty.noTarget()
         advanceTimeBy(60_000); runCurrent()
         assertEquals(0, c.closes)
         c.duty.viewerClosed("browser")
@@ -176,7 +171,6 @@ class CameraStandbyStateTest {
         val c = Camera(this)
         c.duty.start()
         assertEquals(1, c.opens)
-        c.duty.noTarget()
         c.duty.stop()
         advanceTimeBy(60_000); runCurrent()
         assertEquals(1, c.opens)
@@ -202,5 +196,17 @@ class CameraStandbyStateTest {
         assertEquals(1, c.closes)
         advanceTimeBy(10_000); runCurrent()
         assertEquals(2, c.opens)
+    }
+
+    @Test fun laterTargetWithinProbeWindowPreventsClosingAtDeadline() = runTest {
+        val c = Camera(this)
+        runCurrent()
+        advanceTimeBy(800); runCurrent()
+        assertEquals(0, c.closes)
+        advanceTimeBy(1_200)
+        c.duty.recordingChanged(true)
+        advanceTimeBy(20_000); runCurrent()
+        assertEquals(0, c.closes)
+        assertEquals(CameraDutyCycle.Mode.RECORDING, c.mode)
     }
 }

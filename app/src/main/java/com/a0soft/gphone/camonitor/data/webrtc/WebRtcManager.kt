@@ -136,7 +136,6 @@ class WebRtcManager(private val context: Context) {
     private var isCameraCapturing = false
     var onCameraUnexpectedClosed: (() -> Unit)? = null
     var onSmartRecordingChanged: ((Boolean) -> Unit)? = null
-    var onSmartCameraIdle: (() -> Unit)? = null
     var onPeerStateChanged: ((String, PeerConnection.PeerConnectionState) -> Unit)? = null
     private val mainHandler = Handler(android.os.Looper.getMainLooper())
     private var captureGeneration = 0
@@ -205,11 +204,6 @@ class WebRtcManager(private val context: Context) {
             onRecordingChanged = { recording ->
                 mainHandler.post {
                     if (generation == captureGeneration) onSmartRecordingChanged?.invoke(recording)
-                }
-            }
-            onNoTarget = {
-                mainHandler.post {
-                    if (generation == captureGeneration) onSmartCameraIdle?.invoke()
                 }
             }
             onCameraError = { errorDescription ->

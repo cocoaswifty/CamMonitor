@@ -167,7 +167,6 @@ class CameraMonitorService : Service() {
         dutyCycle = duty
         manager.onCameraUnexpectedClosed = { serviceScope.launch { duty.cameraFailed() } }
         manager.onSmartRecordingChanged = { duty.recordingChanged(it) }
-        manager.onSmartCameraIdle = { duty.noTarget() }
         manager.onPeerStateChanged = { id, state ->
             when (state) {
                 org.webrtc.PeerConnection.PeerConnectionState.CONNECTED -> duty.viewerConnected(id)
@@ -429,7 +428,6 @@ class CameraMonitorService : Service() {
         dutyCycle?.stop()
         dutyCycle = null
         CamMonitorApp.instance.webRtcManager.onSmartRecordingChanged = null
-        CamMonitorApp.instance.webRtcManager.onSmartCameraIdle = null
         CamMonitorApp.instance.webRtcManager.onPeerStateChanged = null
         stopBatteryBroadcast()
         serviceScope.cancel()

@@ -13,7 +13,9 @@ and remote WebRTC live viewing** from Android, MacBook browsers and iPhone Safar
    - `VideoCapture` → local MP4 recording of matching events.
 4. With no viewers and no recording, physically unbind the camera. After it
    reports CLOSED, wait **10 seconds**, then reopen and inspect the scene.
-   A successful negative result closes it again; a target starts MP4 recording.
+   Keep a four-second probe window so the first startup frame cannot end the
+   check prematurely; a target starts MP4 recording immediately. If no target
+   is found within the window, close the camera again.
    While open, classify approximately every 700 ms. Stop after **4 seconds**
    without a target, using recent successful results rather than model failures.
 5. Keep the camera open until recording Finalize completes. If a target returns

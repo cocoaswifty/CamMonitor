@@ -41,8 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class SharedEventRecorder(
     private val context: Context,
-    private val onRecordingChanged: (Boolean) -> Unit = {},
-    private val onNoTarget: () -> Unit = {}
+    private val onRecordingChanged: (Boolean) -> Unit = {}
 ) {
 
     enum class State { OFF, SCANNING, RECORDING, ERROR }
@@ -79,6 +78,7 @@ class SharedEventRecorder(
     private var lastResultAt = 0L
     private var lastResultHadTarget = false
     private var lastCheckedAt = 0L
+    private var probeOpenedAt = 0L
 
     /** Must be called on main thread BEFORE CameraX bindToLifecycle. */
     fun useCases(): Array<androidx.camera.core.UseCase> {
@@ -102,6 +102,7 @@ class SharedEventRecorder(
         lastSeenAt = -1L
         lastResultAt = 0L
         lastCheckedAt = 0L
+        probeOpenedAt = SystemClock.elapsedRealtime()
         scheduleStopCheck()
         return arrayOf(analyzer, video)
     }
@@ -137,8 +138,8 @@ class SharedEventRecorder(
                 val at = SystemClock.elapsedRealtime()
                 handler.post {
                     if (!active || generation != bindGeneration) return@post
-                    if (lastResultAt == 0L || detected != lastResultHadTarget) {
-                        AppLogger.i("SharedEventRecorder", "Detection target=$detected; labels=" +
+                    if (at - probeOpenedAt <= SmartRecordingPolicy.PROBE_MS || detected != lastResultHadTarget) {
+                        AppLogger.i("SharedEventRecorder", "Detection +${at - probeOpenedAt}ms target=$detected; labels=" +
                             labels.take(5).joinToString { "${it.text}:${"%.2f".format(Locale.US, it.confidence)}" })
                     }
                     lastResultAt = at
@@ -146,8 +147,6 @@ class SharedEventRecorder(
                     if (detected) {
                         lastSeenAt = at
                         if (recording == null && !stopping) startEventRecording()
-                    } else if (recording == null && !stopping) {
-                        onNoTarget()
                     }
                 }
             }.addOnFailureListener { ex ->
