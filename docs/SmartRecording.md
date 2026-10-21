@@ -11,22 +11,38 @@ and remote WebRTC live viewing** from Android, MacBook browsers and iPhone Safar
    - `Preview` → Android WebRTC video track for paired viewers;
    - `ImageAnalysis` → bundled ML Kit image labeling;
    - `VideoCapture` → local MP4 recording of matching events.
-4. When not recording, sample a frame about every **10 seconds** for a person
-   or common animal label. When a target is found, start recording and classify
-   more frequently. Stop when no matching label has been seen for **4 seconds**.
-5. MP4 clips are stored privately in `Movies/CamMonitorEvents` under the app's
-   external-files area. They can be viewed or shared from the Smart Recording
-   screen. No cloud upload or continuous audio recording.
+4. With no viewers and no recording, physically unbind the camera. After it
+   reports CLOSED, wait **10 seconds**, then reopen and inspect the scene.
+   Keep a four-second probe window so the first startup frame cannot end the
+   check prematurely; a target starts MP4 recording immediately. If no target
+   is found within the window, close the camera again.
+   While open, classify approximately every 700 ms. Stop after **4 seconds**
+   without a target, using recent successful results rather than model failures.
+5. Keep the camera open until recording Finalize completes. If a target returns
+   while the previous clip is finalizing, start the next clip before sleeping.
+6. A paired browser's authenticated Offer wakes the camera immediately, including
+   during the 10-second sleep. Pending connections hold camera demand for up to
+   30 seconds; connected viewers hold it until they leave. Event recording and
+   viewing share the same session and do not interrupt each other.
+7. Clips remain private in Movies/CamMonitorEvents. No cloud upload or clip audio.
 
-The camera stays **open** while smart monitoring is enabled, even with **zero
-remote viewers**, so Android can detect events and accept incoming WebRTC offers
-immediately. This supersedes the earlier 4-second camera probe / 10-second
-physical camera-off duty cycle. In simultaneous mode the **AI sampling interval**
-is ten seconds, not the camera opening interval. Continuous capture uses more
-battery and can increase device temperature.
+Start monitoring once while Android is visible and permissions are granted.
+Returning to the home screen, pressing Home or locking the phone leaves the
+foreground service and encrypted MQTT listener running. Use **Stop monitoring**
+to stop it. Change the smart-recording setting only while monitoring is stopped;
+the setting is locked during monitoring to avoid interrupting a clip. Camera
+and viewer roles on the same Android phone are mutually exclusive.
 
-When smart monitoring is **disabled**, existing 60-second viewer inactivity
-standby and night-extension camera behavior remain unchanged.
+With smart recording disabled, the sensor stays off until a paired viewer
+requests it; there is no periodic AI probe. The smart switch defaults to off.
+A probe with no usable image/model result times out after four seconds and
+retries after sleeping; this is not reported as a confirmed negative result.
+
+Android can restrict background camera services, especially after force-stop,
+reboot, permission revocation or OEM process termination. Remote wake requires
+the foreground monitoring service to remain running and reachable. This is not
+a mechanism for bypassing those system restrictions. Scheduling is best effort
+under Android power management, not an exact-alarm guarantee.
 
 ## Device compatibility
 
@@ -51,9 +67,10 @@ Also verify on Android hardware:
 - Live WebRTC viewer shows video throughout event recording;
 - person and animal labels trigger MP4;
 - clip ends after 4 seconds without a label;
-- no viewers → classification continues;
+- no viewers → hardware CLOSED for 10 seconds between probes;
+- remote Offer during sleep, probe, recording and Finalize;
 - cross-network MacBook/iPhone viewer can connect while recording;
-- Android stops the camera gracefully on exiting Camera Mode;
+- returning home preserves monitoring; Stop monitoring releases it;
 - 30+ minute capture with heat, orientation, torch and poor lighting;
 - unsupported camera combinations fall back to live view with a visible error.
 

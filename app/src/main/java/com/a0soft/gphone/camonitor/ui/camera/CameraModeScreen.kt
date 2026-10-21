@@ -89,8 +89,6 @@ fun CameraModeScreen(
         } else if (isBlackScreenActive) {
             wakeUpDisplay()
         } else {
-            val stopIntent = Intent(context, CameraMonitorService::class.java)
-            context.stopService(stopIntent)
             onExitCameraMode()
         }
     }
@@ -109,7 +107,6 @@ fun CameraModeScreen(
                 val localBinder = binder as? CameraMonitorService.LocalBinder
                 val s = localBinder?.getService()
                 service = s
-                s?.startStreaming()
             }
             override fun onServiceDisconnected(name: ComponentName?) {
                 service = null
@@ -142,11 +139,8 @@ fun CameraModeScreen(
     }
 
     // 60-Second local inactivity timer for OLED black screen
-    LaunchedEffect(isBlackScreenActive, streamingState) {
-        if (!isBlackScreenActive && (
-                streamingState == CameraStreamingState.STREAMING ||
-                (smartEnabled && streamingState == CameraStreamingState.WAITING_FOR_VIEWERS)
-            )) {
+    LaunchedEffect(isBlackScreenActive, streamingState != CameraStreamingState.IDLE) {
+        if (!isBlackScreenActive && streamingState != CameraStreamingState.IDLE) {
             idleSeconds = 0
             while (idleSeconds < 60) {
                 delay(1000L)
@@ -229,10 +223,8 @@ fun CameraModeScreen(
             )
         }
 
-        if (streamingState == CameraStreamingState.PAUSED_INACTIVITY) {
-            // Standby View after 60s of 0 viewers
+        if (streamingState == CameraStreamingState.PAUSED_INACTIVITY && !isBlackScreenActive) {
             CameraPausedStandbyView(
-                onResume = { service?.resumeStreamingFromPause() },
                 onExit = {
                     val stopIntent = Intent(context, CameraMonitorService::class.java)
                     context.stopService(stopIntent)
@@ -458,7 +450,6 @@ fun CameraModeScreen(
 
 @Composable
 private fun CameraPausedStandbyView(
-    onResume: () -> Unit,
     onExit: () -> Unit
 ) {
     Column(
@@ -489,13 +480,6 @@ private fun CameraPausedStandbyView(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick = onResume,
-            modifier = Modifier.fillMaxWidth(0.8f)
-        ) {
-            Text(stringResource(R.string.start_camera_mode))
-        }
-        Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(
             onClick = onExit,
             modifier = Modifier.fillMaxWidth(0.8f)

@@ -18,6 +18,7 @@ import androidx.core.content.FileProvider
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.camera.SharedEventRecorder
 import com.a0soft.gphone.camonitor.data.camera.SmartEventSettings
+import com.a0soft.gphone.camonitor.service.CameraMonitorService
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -31,6 +32,7 @@ fun SmartRecordingScreen(onBack: () -> Unit, onStartCameraMode: () -> Unit) {
     val latestVideo by SharedEventRecorder.latestClip.collectAsState()
     val error by SharedEventRecorder.errorMessage.collectAsState()
     var enabled by remember { mutableStateOf(SmartEventSettings.isEnabled(context)) }
+    val monitoring by CameraMonitorService.monitoring.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
 
     val files = remember(refresh, latestVideo) {
@@ -62,10 +64,17 @@ fun SmartRecordingScreen(onBack: () -> Unit, onStartCameraMode: () -> Unit) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.smart_record_enable),
                     style = MaterialTheme.typography.titleMedium)
-                Switch(enabled, onCheckedChange = {
+                Switch(enabled, enabled = !monitoring, onCheckedChange = {
                     enabled = it
                     SmartEventSettings.setEnabled(context, it)
                 })
+            }
+            if (monitoring) {
+                Text(stringResource(R.string.smart_record_stop_before_change),
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = {
+                    context.stopService(Intent(context, CameraMonitorService::class.java))
+                }) { Text(stringResource(R.string.camera_exit_button)) }
             }
             Text(
                 stringResource(

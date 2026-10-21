@@ -26,4 +26,7 @@ object SmartRecordingPolicy {
 
     fun targetAbsentForLongEnough(lastSeenAt: Long, now: Long): Boolean =
         lastSeenAt >= 0L && now - lastSeenAt >= ABSENCE_GRACE_MS
+
+    fun restartAfterFinalize(hasError: Boolean, hasTarget: Boolean, resultAt: Long, now: Long): Boolean =
+        !hasError && hasTarget && now - resultAt in 0..(2 * INFERENCE_SPACING_MS)
 }

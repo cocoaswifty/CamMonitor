@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SmartRecordingPolicyTest {
+    @Test fun targetReturningWhileClipFinalizesStartsNextClip() {
+        assertTrue(SmartRecordingPolicy.restartAfterFinalize(false, true, 5_000, 5_200))
+        assertFalse(SmartRecordingPolicy.restartAfterFinalize(false, false, 5_000, 5_200))
+        assertFalse(SmartRecordingPolicy.restartAfterFinalize(false, true, 1_000, 5_200))
+        assertFalse(SmartRecordingPolicy.restartAfterFinalize(true, true, 5_000, 5_200))
+    }
     @Test fun triggersOnPeopleAndAnimals() {
         assertTrue(SmartRecordingPolicy.hasTarget(listOf(SmartLabel("Person", .82f))))
         assertTrue(SmartRecordingPolicy.hasTarget(listOf(SmartLabel("Cat", .91f))))

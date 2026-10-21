@@ -2,7 +2,7 @@
     <string name="app_name">CamMonitor</string>
     <string name="start_camera_mode">啟動鏡頭模式</string>
     <string name="start_viewer_mode">啟動觀看模式</string>
-    <string name="exit_camera_mode">退出鏡頭模式</string>
+    <string name="exit_camera_mode">停止監控</string>
     <string name="exit_viewer_mode">退出觀看模式</string>
     <string name="rotate_90">旋轉</string>
     <string name="notification_channel_name">CamMonitor 服務</string>
@@ -51,9 +51,9 @@
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
     <string name="camera_intercom_live">對講通話中（觀看端發話）</string>
     <string name="camera_black_screen">熄屏模式</string>
-    <string name="camera_exit_button">退出鏡頭</string>
+    <string name="camera_exit_button">停止監控</string>
     <string name="camera_paused_title">鏡頭已暫停</string>
-    <string name="camera_paused_description">超過 1 分鐘無觀看端連線。已停止感光元件以節省電力。待命模式進行中 — 當觀看端連線時將自動喚醒鏡頭。</string>
+    <string name="camera_paused_description">相機硬體已關閉，遠端訊令仍保持待命。若已啟用智慧錄影，等待 10 秒後會再次辨識；已配對的觀看端連線會自動喚醒相機。返回首頁不會停止監控。</string>
 
     <!-- Viewer Mode Screen -->
     <string name="camera_default_name">鏡頭</string>
@@ -169,9 +169,11 @@
     <string name="web_pairing_full">攝影機最多配對兩台觀看端，請先移除一台。</string>
     <string name="web_pairing_send_failed">無法送出配對確認，請重新嘗試。</string>
     <string name="web_pairing_save">儲存</string>
-    <string name="smart_record_shared_info">智慧人物／動物事件錄影與遠端 WebRTC 即時觀看使用同一個攝影機。開啟後約每 10 秒分析一次畫面，發現目標後錄影；連續 4 秒未見目標便結束該段影片。為保持遠端隨時可連線，智慧監控期間攝影機不會每 10 秒實際關閉。</string>
+    <string name="smart_record_shared_info">啟用智慧錄影後，相機會開啟辨識人物／動物；有目標就錄影，成功辨識連續 4 秒無目標後停止。沒有觀看者或錄影時，實際關閉相機等待 10 秒再檢查。已配對的網頁可隨時要求喚醒相機。</string>
     <string name="smart_record_enable">啟用智慧事件錄影</string>
-    <string name="smart_record_shared_enabled">啟用後，下一次進入攝影機模式會同時進行即時監看與智慧錄影。攝影機持續開啟，耗電與發熱可能增加。</string>
+    <string name="smart_record_shared_enabled">啟動監控一次後，返回首頁或鎖屏仍保持待命。網頁觀看期間相機維持開啟，智慧事件錄影仍可同時運作。</string>
     <string name="smart_record_shared_disabled">停用智慧事件錄影後，攝影機模式只提供即時監看。</string>
     <string name="smart_record_start_shared_monitor">啟動攝影機與遠端監看</string>
+    <string name="smart_record_stop_before_change">請先停止監控再變更智慧錄影設定，避免中斷正在儲存的影片。</string>
+    <string name="stop_monitoring_before_viewing">此手機正在監控。請先停止監控，再切換為觀看端。</string>
 </resources>

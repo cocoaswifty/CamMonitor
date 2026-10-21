@@ -17,6 +17,7 @@ let client = null;
 let peer = null;
 let keyBytes = null;
 let retryOffer = null;
+let offerTimeout = null;
 let pendingAnswer = false;
 let pendingCandidates = [];
 let pendingPairResolve = null;
@@ -35,7 +36,7 @@ function render() {
   ui.sound.disabled = !peer;
   ui.fullscreen.disabled = !peer;
   ui.camera.textContent = paired ?
-    "已配對攝影機：" + paired.name + "。請先在 Android 開啟「攝影機模式」，再按觀看。" :
+    "已配對攝影機：" + paired.name + "。按「觀看即時影像」會遠端喚醒已啟用監控的 Android。" :
     invite ?
     "收到 " + invite.name + " 的限時配對邀請，請確保 Android 正顯示網頁配對畫面。" :
     "尚未配對。請從 Android CamMonitor 產生「網頁觀看端配對」連結或 QR Code。";
@@ -122,7 +123,7 @@ async function pairBrowser() {
     }
     if (!completed) throw new Error("配對逾時。請重新產生 Android 配對連結。");
     await confirmation;
-    status("配對成功。請確認 Android 已進入攝影機模式，再開始觀看。");
+    status("配對成功。按「觀看即時影像」即可喚醒攝影機。");
   } catch (e) {
     status("配對失敗：" + e.message);
   } finally {
@@ -172,6 +173,7 @@ async function receiveSignal(envelope) {
     if (!message) return;
     if (message.type === "ANSWER" && peer && pendingAnswer) {
       pendingAnswer = false;
+      clearTimeout(offerTimeout); offerTimeout = null;
       if (retryOffer) clearInterval(retryOffer);
       retryOffer = null;
       await peer.setRemoteDescription({ type: "answer", sdp: message.sdp });
@@ -198,6 +200,7 @@ async function receiveSignal(envelope) {
 }
 
 function closePeer() {
+  clearTimeout(offerTimeout); offerTimeout = null;
   if (retryOffer) clearInterval(retryOffer);
   retryOffer = null; lastOffer = null; pendingAnswer = false;
   pendingCandidates = []; controls = null;
@@ -298,6 +301,11 @@ async function watch() {
       transmit({ type: "OFFER", sdp: lastOffer }, keyBytes, paired.deviceId)
         .catch(console.warn);
     }, 5000);
+    offerTimeout = setTimeout(() => {
+      if (peer !== active || !pendingAnswer) return;
+      closePeer();
+      status("攝影機未回應。Android 可能離線、監控已停止或被系統終止。請確認手機的監控通知仍在，再重試。");
+    }, 30000);
     render();
   } catch (e) {
     closePeer();
@@ -338,7 +346,7 @@ async function initialize() {
     if (invite) {
       status("收到配對邀請。點選「配對此瀏覽器」。");
     } else if (paired) {
-      status("已保存配對。Android 啟動攝影機模式後即可觀看。");
+      status("已保存配對。按「觀看即時影像」會喚醒待命中的攝影機，不需再操作 Android。");
     } else {
       status("尚未配對攝影機");
     }

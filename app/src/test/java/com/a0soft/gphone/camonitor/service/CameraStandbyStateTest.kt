@@ -1,151 +1,212 @@
 package com.a0soft.gphone.camonitor.service
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CameraStandbyStateTest {
-
-    @Test
-    fun testInactivityTimerTransitionsToPausedInactivityAfter60s() = runTest {
-        val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
-        var cameraHardwareStopped = false
-
-        var inactivityJob: Job? = null
-        fun startTimer() {
-            inactivityJob?.cancel()
-            inactivityJob = launch {
-                delay(60_000L)
-                cameraHardwareStopped = true
-                streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
-            }
-        }
-
-        startTimer()
-
-        // Advance 30 seconds - should not be paused yet
-        advanceTimeBy(30_000L)
-        runCurrent()
-        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
-        assertFalse(cameraHardwareStopped)
-
-        // Advance remaining 30 seconds - should pause
-        advanceTimeBy(30_001L)
-        runCurrent()
-        assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
-        assertTrue(cameraHardwareStopped)
+    private class Camera(scope: TestScope, smart: Boolean = true, val delayedClose: Boolean = false) {
+        var opens = 0
+        var closes = 0
+        var mode: CameraDutyCycle.Mode? = null
+        var finishClose: (() -> Unit)? = null
+        val expired = mutableListOf<String>()
+        val duty = CameraDutyCycle(scope.backgroundScope, smart,
+            openCamera = { opens++ },
+            closeCamera = { done ->
+                closes++
+                if (delayedClose) finishClose = done else done()
+            },
+            viewerExpired = { expired.add(it) },
+            modeChanged = { mode = it }
+        )
+        init { duty.start() }
     }
 
-    @Test
-    fun testActiveViewerCancelsInactivityTimerAndEntersStreaming() = runTest {
-        val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
-        var cameraHardwareStopped = false
-        var inactivityJob: Job? = null
-
-        fun cancelTimer() {
-            inactivityJob?.cancel()
-            inactivityJob = null
-        }
-
-        fun startTimer() {
-            inactivityJob?.cancel()
-            inactivityJob = launch {
-                delay(60_000L)
-                cameraHardwareStopped = true
-                streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
-            }
-        }
-
-        startTimer()
-
-        // After 20 seconds, a viewer connects
-        advanceTimeBy(20_000L)
+    @Test fun noTargetClosesHardwareAndWaitsTenSecondsBeforeReopening() = runTest {
+        val c = Camera(this)
+        advanceTimeBy(4_000); runCurrent()
+        assertEquals(1, c.opens)
         runCurrent()
-        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
-
-        // Viewer connected (active viewers = 1)
-        streamingState.value = CameraStreamingState.STREAMING
-        cancelTimer()
-
-        // Advance past 60s total time
-        advanceTimeBy(50_000L)
-        runCurrent()
-
-        // Must still be STREAMING and not stopped
-        assertEquals(CameraStreamingState.STREAMING, streamingState.value)
-        assertFalse(cameraHardwareStopped)
+        assertEquals(1, c.closes)
+        assertEquals(CameraDutyCycle.Mode.SLEEPING, c.mode)
+        advanceTimeBy(9_999); runCurrent()
+        assertEquals(1, c.opens)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(2, c.opens)
+        advanceTimeBy(4_000); runCurrent()
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(3, c.opens)
     }
 
-    @Test
-    fun testResumeStreamingFromPauseWhenOfferArrives() = runTest {
-        val streamingState = MutableStateFlow(CameraStreamingState.PAUSED_INACTIVITY)
-        var cameraHardwareStarted = false
-        var inactivityJob: Job? = null
-
-        fun startTimer() {
-            inactivityJob?.cancel()
-            inactivityJob = launch {
-                delay(60_000L)
-                streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
-            }
-        }
-
-        fun resumeStreamingFromPause() {
-            cameraHardwareStarted = true
-            streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
-            startTimer()
-        }
-
-        // Remote offer arrives while in PAUSED_INACTIVITY
-        if (streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
-            resumeStreamingFromPause()
-        }
-
+    @Test fun sleepIntervalStartsAfterHardwareReportsClosed() = runTest {
+        val c = Camera(this, delayedClose = true)
+        advanceTimeBy(4_000); runCurrent()
+        advanceTimeBy(15_000); runCurrent()
+        assertEquals(1, c.opens)
+        c.finishClose!!()
         runCurrent()
-        assertTrue(cameraHardwareStarted)
-        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
-
-        // Advancing 60s should re-pause if viewer doesn't connect
-        advanceTimeBy(60_001L)
-        runCurrent()
-        assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
+        advanceTimeBy(9_999); runCurrent()
+        assertEquals(1, c.opens)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(2, c.opens)
     }
 
-    @Test
-    fun testViewerDisconnectRestartsCountdown() = runTest {
-        val streamingState = MutableStateFlow(CameraStreamingState.STREAMING)
-        var timerStarted = false
-        var inactivityJob: Job? = null
-
-        fun startTimer() {
-            timerStarted = true
-            inactivityJob?.cancel()
-            inactivityJob = launch {
-                delay(60_000L)
-                streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
-            }
-        }
-
-        // Viewer disconnects (count goes from 1 to 0)
-        streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
-        startTimer()
-
+    @Test fun targetKeepsRecordingUntilFinalizeEvenWhenNoTargetArrives() = runTest {
+        val c = Camera(this)
+        c.duty.recordingChanged(true)
         runCurrent()
-        assertTrue(timerStarted)
-        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(0, c.closes)
+        assertEquals(CameraDutyCycle.Mode.RECORDING, c.mode)
+        c.duty.recordingChanged(false) // recorder emits only after Finalize
+        assertEquals(1, c.closes)
+    }
 
-        advanceTimeBy(60_001L)
+    @Test fun offerDuringSleepWakesWithoutAndroidInteraction() = runTest {
+        val c = Camera(this)
+        advanceTimeBy(4_000); runCurrent()
         runCurrent()
-        assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
+        advanceTimeBy(2_000)
+        assertTrue(c.duty.requestViewer("browser"))
+        c.duty.viewerConnected("browser")
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(2, c.opens)
+        assertEquals(1, c.closes)
+        assertEquals(CameraDutyCycle.Mode.VIEWING, c.mode)
+    }
+
+    @Test fun offerDuringHardwareCloseInvalidatesOldSleepCallback() = runTest {
+        val c = Camera(this, delayedClose = true)
+        advanceTimeBy(4_000); runCurrent()
+        val oldClose = c.finishClose!!
+        assertTrue(c.duty.requestViewer("browser"))
+        c.duty.viewerConnected("browser")
+        oldClose()
+        advanceTimeBy(20_000); runCurrent()
+        assertEquals(2, c.opens)
+        assertEquals(1, c.closes)
+    }
+
+    @Test fun pendingOfferProtectsHandshakeButExpiresWithoutAnswer() = runTest {
+        val c = Camera(this)
+        c.duty.requestViewer("browser")
+        runCurrent()
+        advanceTimeBy(29_999); runCurrent()
+        assertEquals(0, c.closes)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(listOf("browser"), c.expired)
+        assertEquals(1, c.closes)
+    }
+
+    @Test fun duplicateOfferDoesNotExtendLeaseOrCreateMoreDemand() = runTest {
+        val c = Camera(this)
+        c.duty.requestViewer("one")
+        runCurrent()
+        advanceTimeBy(20_000)
+        c.duty.requestViewer("one")
+        assertTrue(c.duty.requestViewer("two"))
+        assertFalse(c.duty.requestViewer("three"))
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(listOf("one"), c.expired)
+        assertEquals(0, c.closes)
+    }
+
+    @Test fun recordingFinalizeDoesNotInterruptConnectedViewer() = runTest {
+        val c = Camera(this)
+        c.duty.recordingChanged(true)
+        c.duty.requestViewer("browser")
+        c.duty.viewerConnected("browser")
+        c.duty.recordingChanged(false)
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(0, c.closes)
+        c.duty.viewerClosed("browser")
+        assertEquals(1, c.closes)
+    }
+
+    @Test fun replacementOfferMustReconnectOrReleaseCamera() = runTest {
+        val c = Camera(this)
+        c.duty.requestViewer("browser")
+        c.duty.viewerConnected("browser")
+        c.duty.requestViewer("browser")
+        runCurrent()
+        advanceTimeBy(30_000); runCurrent()
+        assertEquals(listOf("browser"), c.expired)
+        assertEquals(1, c.closes)
+    }
+
+    @Test fun lastViewerDisconnectDoesNotTruncateRecording() = runTest {
+        val c = Camera(this)
+        c.duty.requestViewer("browser")
+        c.duty.viewerConnected("browser")
+        c.duty.recordingChanged(true)
+        c.duty.viewerClosed("browser")
+        assertEquals(0, c.closes)
+        c.duty.recordingChanged(false)
+        assertEquals(1, c.closes)
+    }
+
+    @Test fun transientDisconnectCanRecoverAndPermanentDisconnectExpires() = runTest {
+        val c = Camera(this)
+        c.duty.requestViewer("browser")
+        c.duty.viewerConnected("browser")
+        c.duty.viewerDisconnected("browser")
+        runCurrent()
+        advanceTimeBy(5_000)
+        c.duty.viewerConnected("browser")
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(0, c.closes)
+        c.duty.viewerDisconnected("browser")
+        runCurrent()
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(1, c.closes)
+    }
+
+    @Test fun repeatedStartDoesNotCreateAnotherProbeAndStopCancelsTimers() = runTest {
+        val c = Camera(this)
+        c.duty.start()
+        assertEquals(1, c.opens)
+        c.duty.stop()
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(1, c.opens)
+        assertFalse(c.duty.requestViewer("late"))
+    }
+
+    @Test fun disabledSmartModeKeepsCameraOffUntilViewerRequests() = runTest {
+        val c = Camera(this, smart = false)
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(0, c.opens)
+        assertTrue(c.duty.requestViewer("browser"))
+        assertEquals(1, c.opens)
+        c.duty.viewerClosed("browser")
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(1, c.opens)
+        assertEquals(1, c.closes)
+    }
+
+    @Test fun stalledProbeTimesOutAndRetriesAfterSleep() = runTest {
+        val c = Camera(this)
+        runCurrent()
+        advanceTimeBy(4_000); runCurrent()
+        assertEquals(1, c.closes)
+        advanceTimeBy(10_000); runCurrent()
+        assertEquals(2, c.opens)
+    }
+
+    @Test fun laterTargetWithinProbeWindowPreventsClosingAtDeadline() = runTest {
+        val c = Camera(this)
+        runCurrent()
+        advanceTimeBy(800); runCurrent()
+        assertEquals(0, c.closes)
+        advanceTimeBy(1_200)
+        c.duty.recordingChanged(true)
+        advanceTimeBy(20_000); runCurrent()
+        assertEquals(0, c.closes)
+        assertEquals(CameraDutyCycle.Mode.RECORDING, c.mode)
     }
 }

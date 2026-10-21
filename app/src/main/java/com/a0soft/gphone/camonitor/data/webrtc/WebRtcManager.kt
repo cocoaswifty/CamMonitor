@@ -135,6 +135,10 @@ class WebRtcManager(private val context: Context) {
     @Volatile
     private var isCameraCapturing = false
     var onCameraUnexpectedClosed: (() -> Unit)? = null
+    var onSmartRecordingChanged: ((Boolean) -> Unit)? = null
+    var onPeerStateChanged: ((String, PeerConnection.PeerConnectionState) -> Unit)? = null
+    private val mainHandler = Handler(android.os.Looper.getMainLooper())
+    private var captureGeneration = 0
     private var cameraXCapturer: com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer? = null
 
     private val _isNightModeActive = MutableStateFlow(false)
@@ -164,6 +168,7 @@ class WebRtcManager(private val context: Context) {
 
     private fun releaseCameraHardwareOnly() {
         try {
+            captureGeneration++
             isCameraCapturing = false
             _isNightModeActive.value = false
             cameraXCapturer = null
@@ -194,7 +199,13 @@ class WebRtcManager(private val context: Context) {
             releaseCameraHardwareOnly()
         }
 
+        val generation = ++captureGeneration
         val capturer = com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer(context, preferNightMode = true).apply {
+            onRecordingChanged = { recording ->
+                mainHandler.post {
+                    if (generation == captureGeneration) onSmartRecordingChanged?.invoke(recording)
+                }
+            }
             onCameraError = { errorDescription ->
                 AppLogger.e(tag, "Camera error: $errorDescription")
                 val wasCapturing = isCameraCapturing
@@ -343,6 +354,19 @@ class WebRtcManager(private val context: Context) {
         }
     }
 
+    /** Only called with no pending/connected viewers and no recording finalization. */
+    fun pauseCameraCapture(onClosed: () -> Unit) {
+        val current = cameraXCapturer
+        current?.stopCaptureWhenClosed(onClosed)
+        releaseCameraHardwareOnly()
+        localAudioTrack?.dispose()
+        localAudioTrack = null
+        audioSource?.dispose()
+        audioSource = null
+        if (current == null) onClosed()
+        AppLogger.i(tag, "Camera hardware sleeping; signaling remains available")
+    }
+
     fun setTorch(enabled: Boolean): Boolean {
         cameraXCapturer?.let {
             return it.setTorch(enabled)
@@ -444,6 +468,11 @@ class WebRtcManager(private val context: Context) {
                 AppLogger.i(tag, "ConnectionChange for $peerId: $newState")
                 _connectionState.value = newState
                 updateActiveViewersCount()
+                mainHandler.post {
+                    if (peerConnections[peerId]?.connectionState() == newState) {
+                        onPeerStateChanged?.invoke(peerId, newState)
+                    }
+                }
             }
 
             override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {

@@ -2,7 +2,7 @@
     <string name="app_name">CamMonitor</string>
     <string name="start_camera_mode">Start Camera Mode</string>
     <string name="start_viewer_mode">Start Viewer Mode</string>
-    <string name="exit_camera_mode">Exit Camera Mode</string>
+    <string name="exit_camera_mode">Stop monitoring</string>
     <string name="exit_viewer_mode">Exit Viewer Mode</string>
     <string name="rotate_90">Rotate</string>
     <string name="notification_channel_name">CamMonitor Service</string>
@@ -51,9 +51,9 @@
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
     <string name="camera_intercom_live">Intercom Live (Viewer Speaking)</string>
     <string name="camera_black_screen">Black Screen</string>
-    <string name="camera_exit_button">Exit Camera</string>
+    <string name="camera_exit_button">Stop monitoring</string>
     <string name="camera_paused_title">Camera Paused</string>
-    <string name="camera_paused_description">No viewers connected for 1 minute. Camera sensor stopped to preserve battery. Standby mode active — camera will automatically wake up when a viewer connects.</string>
+    <string name="camera_paused_description">Camera hardware is off; remote requests are still accepted. With smart recording enabled, it checks again after 10 seconds. A paired viewer wakes it automatically. Returning home keeps monitoring on.</string>
 
     <!-- Viewer Mode Screen -->
     <string name="camera_default_name">Camera</string>
@@ -169,9 +169,11 @@
     <string name="web_pairing_full">Camera supports at most two paired viewers. Remove an existing viewer first.</string>
     <string name="web_pairing_send_failed">Unable to deliver confirmation. Please retry pairing.</string>
     <string name="web_pairing_save">Save</string>
-    <string name="smart_record_shared_info">Smart event recording and remote WebRTC live viewing share one camera. The frame is classified approximately every 10 seconds while idle; a matching person/animal triggers MP4 recording until absent for 4 seconds. The camera remains open to allow immediate remote viewing.</string>
+    <string name="smart_record_shared_info">With smart recording enabled, the camera checks for people/animals, records matches, and stops after 4 seconds of confirmed absence. With no viewers or recording, the camera closes for 10 seconds before checking again. A paired browser can wake it remotely.</string>
     <string name="smart_record_enable">Enable smart event recording</string>
-    <string name="smart_record_shared_enabled">When Camera Mode is next started, event recording and remote live viewing run together. Continuous camera use consumes more power.</string>
+    <string name="smart_record_shared_enabled">Start monitoring once. Returning home or locking the phone keeps monitoring online. Remote viewing holds the camera open; recording continues alongside it.</string>
     <string name="smart_record_shared_disabled">When disabled, Camera Mode provides live WebRTC viewing without smart recording.</string>
     <string name="smart_record_start_shared_monitor">Start camera and remote viewer</string>
+    <string name="smart_record_stop_before_change">Stop monitoring before changing smart recording settings to avoid interrupting a clip.</string>
+    <string name="stop_monitoring_before_viewing">This phone is monitoring. Stop monitoring before switching to viewer mode.</string>
 </resources>
