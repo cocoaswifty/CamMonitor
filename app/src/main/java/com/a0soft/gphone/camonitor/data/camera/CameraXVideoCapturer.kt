@@ -111,6 +111,9 @@ class CameraXVideoCapturer(
     private var camera: Camera? = null
     private var preview: Preview? = null
     private var eventRecorder: SharedEventRecorder? = null
+    var onRecordingChanged: (Boolean) -> Unit = {}
+    var onNoTarget: () -> Unit = {}
+    private var disposed = false
     private var surface: Surface? = null
 
     var currentTargetRotation: Int = Surface.ROTATION_0
@@ -135,6 +138,7 @@ class CameraXVideoCapturer(
         nightModeSetting = setting
         AppLogger.i(tag, "NightModeSetting changed to: $setting")
         mainHandler.post {
+            if (disposed) return@post
             if (!isCapturing.get()) return@post
             if (eventRecorder != null) {
                 // Night extension rebind would finalize a shared recording.
@@ -207,11 +211,12 @@ class CameraXVideoCapturer(
         lastFramerate = framerate
 
         mainHandler.post {
+            if (disposed) return@post
             try {
                 val initialRotation = getDeviceRotation()
                 currentTargetRotation = initialRotation
                 if (SmartEventSettings.isEnabled(context)) {
-                    eventRecorder = SharedEventRecorder(context)
+                    eventRecorder = SharedEventRecorder(context, onRecordingChanged, onNoTarget)
                 }
 
                 // Start WebRTC listening to incoming OpenGL texture frames
@@ -615,7 +620,12 @@ class CameraXVideoCapturer(
     }
 
     override fun stopCapture() {
+        stopCaptureWhenClosed {}
+    }
+
+    fun stopCaptureWhenClosed(onClosed: () -> Unit) {
         if (!isCapturing.getAndSet(false)) {
+            onClosed()
             return
         }
 
@@ -623,12 +633,24 @@ class CameraXVideoCapturer(
         stopOrientationMonitoring()
 
         val latch = CountDownLatch(1)
-        mainHandler.post {
+        val cleanup = Runnable {
             try {
+                val cameraState = camera?.cameraInfo?.cameraState
                 eventRecorder?.close()
                 eventRecorder = null
                 capturerLifecycleOwner.stop()
                 cameraProvider?.unbindAll()
+                if (cameraState == null) onClosed() else {
+                    val observer = object : androidx.lifecycle.Observer<androidx.camera.core.CameraState> {
+                        override fun onChanged(value: androidx.camera.core.CameraState) {
+                            if (value.type == androidx.camera.core.CameraState.Type.CLOSED) {
+                                cameraState.removeObserver(this)
+                                onClosed()
+                            }
+                        }
+                    }
+                    cameraState.observeForever(observer)
+                }
                 camera = null
                 preview = null
 
@@ -647,7 +669,11 @@ class CameraXVideoCapturer(
                 latch.countDown()
             }
         }
-        latch.await(2, TimeUnit.SECONDS)
+        if (Looper.myLooper() == Looper.getMainLooper()) cleanup.run()
+        else {
+            mainHandler.post(cleanup)
+            latch.await(2, TimeUnit.SECONDS)
+        }
     }
 
     override fun changeCaptureFormat(width: Int, height: Int, framerate: Int) {
@@ -658,6 +684,7 @@ class CameraXVideoCapturer(
     }
 
     override fun dispose() {
+        disposed = true
         stopCapture()
         surfaceTextureHelper = null
         capturerObserver = null

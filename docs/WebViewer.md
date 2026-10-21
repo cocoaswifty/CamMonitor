@@ -2,7 +2,9 @@
 
 ## Overview
 
-The Android device stays in **Camera Mode**, retaining the CameraX/WebRTC sender.
+Enable Android **Camera Mode** once to start the foreground monitoring service.
+Afterwards, return home or lock the phone; the service accepts paired browser
+requests and wakes the camera without another Android tap.
 A small static web client running on **GitHub Pages** uses browser WebRTC to
 display the camera from Safari on iPhone or a browser on MacBook.
 
@@ -52,7 +54,9 @@ The site is plain HTML/CSS/ES modules and has no CDN runtime dependency.
    but anybody possessing the unexpired link can attempt to pair.
 5. On the web page tap **Pair this browser**. Keep Android on the pairing
    screen until it sends a `PAIR_CONFIRM`, then Android opens Camera Mode.
-6. Tap **Watch live video** in the browser.
+6. Tap **Watch live video** in the browser. On future visits, the saved browser
+   pairing wakes the camera remotely. Do not press Stop monitoring on Android.
+   A force-stopped or offline Android cannot be remotely restarted.
 
 **Each browser profile has its own ECDH/ECDSA identity and occupies one
 viewer slot**; the camera currently permits up to two paired viewers. To
@@ -86,7 +90,8 @@ Use **Manage Devices** on Android to revoke paired browsers. The browser's
 
 ## Limits / development validation
 
-- Requires a running Android Camera Mode service and network connectivity.
+- Requires a running Android monitoring foreground service and network connectivity;
+  the physical camera may be sleeping until an authenticated Offer arrives.
 - Background iPhone Safari may suspend a video connection.
 - Chrome/Safari autoplay policy may require a tap; audio is muted by default.
 - Public MQTT demo service has no availability guarantee or account isolation.
@@ -96,8 +101,8 @@ Use **Manage Devices** on Android to revoke paired browsers. The browser's
 - Only Android-side camera controls on the browser are basic video, sound,
   fullscreen and battery data; advanced PTT/torch/night controls remain in
   the original Android viewer.
-- **Not yet verified by building APK or end-to-end testing on an actual
-  Android + MacBook + iPhone across separate networks**.
+- Build and unit tests do not replace Android + MacBook + iPhone device/network
+  testing. Without a provisioned TURN relay, restrictive NAT can still block video.
 
 ### Test matrix
 

@@ -111,16 +111,20 @@ class MainActivity : ComponentActivity() {
         var selectedCameraDeviceId by remember { mutableStateOf<String?>(null) }
 
         fun navigateTo(screen: AppScreen) {
+            if ((screen == AppScreen.VIEWER_MODE || screen == AppScreen.VIEWER_PAIRING) &&
+                com.a0soft.gphone.camonitor.service.CameraMonitorService.monitoring.value) {
+                android.widget.Toast.makeText(this@MainActivity,
+                    getString(R.string.stop_monitoring_before_viewing),
+                    android.widget.Toast.LENGTH_LONG).show()
+                return
+            }
             backStack.add(screen)
         }
 
         fun navigateBack() {
             if (backStack.size > 1) {
                 val popped = backStack.removeAt(backStack.size - 1)
-                if (popped == AppScreen.CAMERA_MODE) {
-                    val stopIntent = android.content.Intent(this@MainActivity, com.a0soft.gphone.camonitor.service.CameraMonitorService::class.java)
-                    stopService(stopIntent)
-                } else if (popped == AppScreen.VIEWER_MODE) {
+                if (popped == AppScreen.VIEWER_MODE) {
                     CamMonitorApp.instance.webRtcManager.closeAll()
                 }
             } else {
@@ -190,7 +194,7 @@ class MainActivity : ComponentActivity() {
                     onPairingSuccess = { pairedCamId ->
                         selectedCameraDeviceId = pairedCamId
                         if (backStack.isNotEmpty()) backStack.removeAt(backStack.size - 1)
-                        backStack.add(AppScreen.VIEWER_MODE)
+                        navigateTo(AppScreen.VIEWER_MODE)
                     },
                     onCancel = { navigateBack() }
                 )

@@ -30,10 +30,14 @@ enum class CameraStreamingState {
     IDLE,
     WAITING_FOR_VIEWERS,
     STREAMING,
-    PAUSED_INACTIVITY // Paused after 60s of 0 viewers
+    PAUSED_INACTIVITY // Camera hardware off; signaling remains online
 }
 
 class CameraMonitorService : Service() {
+    companion object {
+        private val _monitoring = MutableStateFlow(false)
+        val monitoring: StateFlow<Boolean> = _monitoring.asStateFlow()
+    }
     private val tag = "CameraMonitorService"
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -47,7 +51,9 @@ class CameraMonitorService : Service() {
     private val _isPttReceiving = MutableStateFlow(false)
     val isPttReceiving: StateFlow<Boolean> = _isPttReceiving.asStateFlow()
 
-    private var inactivityJob: Job? = null
+    private var dutyCycle: CameraDutyCycle? = null
+    private val remoteOffers = mutableMapOf<String, String>()
+    private val remoteAnswers = mutableMapOf<String, SignalingMessage.Answer>()
     private var batteryBroadcastJob: Job? = null
 
     inner class LocalBinder : Binder() {
@@ -58,6 +64,7 @@ class CameraMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         AppLogger.i(tag, "CameraMonitorService onStartCommand")
+        startStreaming()
         return START_STICKY
     }
 
@@ -72,6 +79,7 @@ class CameraMonitorService : Service() {
         acquireWakeLock()
         acquireWifiLock()
         startForegroundServiceNotification()
+        _monitoring.value = true
         com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(this)
     }
 
@@ -134,58 +142,62 @@ class CameraMonitorService : Service() {
     }
 
     fun startStreaming() {
+        if (dutyCycle != null) return
         val app = CamMonitorApp.instance
-        _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
-        updateNotification(getString(R.string.notification_waiting_for_viewers))
-
-        app.webRtcManager.onCameraUnexpectedClosed = {
-            serviceScope.launch {
-                if (_streamingState.value == CameraStreamingState.STREAMING ||
-                    _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
-                ) {
-                    AppLogger.w(tag, "Unexpected camera closure detected, attempting recovery restart in 1s...")
-                    delay(1000L)
-                    app.webRtcManager.startCameraCapture()
+        val manager = app.webRtcManager
+        val duty = CameraDutyCycle(
+            serviceScope, SmartEventSettings.isEnabled(this),
+            openCamera = { manager.startCameraCapture() },
+            closeCamera = { closed -> manager.pauseCameraCapture(closed) },
+            viewerExpired = { id -> closeViewer(id) },
+            modeChanged = { mode ->
+                _streamingState.value = when (mode) {
+                    CameraDutyCycle.Mode.SLEEPING -> CameraStreamingState.PAUSED_INACTIVITY
+                    CameraDutyCycle.Mode.VIEWING -> CameraStreamingState.STREAMING
+                    else -> CameraStreamingState.WAITING_FOR_VIEWERS
                 }
+                updateNotification(getString(when (mode) {
+                    CameraDutyCycle.Mode.SLEEPING -> R.string.notification_standby_waiting
+                    CameraDutyCycle.Mode.VIEWING -> R.string.notification_streaming_live
+                    else -> R.string.notification_waiting_for_viewers
+                }))
+                AppLogger.i(tag, "Camera duty mode: $mode")
             }
-        }
-
-        app.webRtcManager.startCameraCapture()
-
-        // Start listening to signaling
-        serviceScope.launch {
-            observeSignaling(app)
-        }
-        serviceScope.launch {
-            app.signalingClient.startListening()
-        }
-
-        // Listen to DataChannel commands from viewers
-        serviceScope.launch {
-            app.webRtcManager.dataChannelCommands.collect { (peerId, cmd) ->
-                handleViewerCommand(peerId, cmd)
-            }
-        }
-
-        // Track active viewers count for 60s timeout and battery broadcast
-        serviceScope.launch {
-            app.webRtcManager.activeViewersCount.collect { count ->
-                if (count > 0) {
-                    _streamingState.value = CameraStreamingState.STREAMING
-                    updateNotification(getString(R.string.notification_streaming_live))
-                    cancelInactivityTimer()
-                    startBatteryBroadcast()
-                } else if (_streamingState.value == CameraStreamingState.STREAMING ||
-                    _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS) {
-                    _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
-                    updateNotification(getString(R.string.notification_waiting_for_viewers))
-                    stopBatteryBroadcast()
-                    startInactivityTimer()
+        )
+        dutyCycle = duty
+        manager.onCameraUnexpectedClosed = { serviceScope.launch { duty.cameraFailed() } }
+        manager.onSmartRecordingChanged = { duty.recordingChanged(it) }
+        manager.onSmartCameraIdle = { duty.noTarget() }
+        manager.onPeerStateChanged = { id, state ->
+            when (state) {
+                org.webrtc.PeerConnection.PeerConnectionState.CONNECTED -> duty.viewerConnected(id)
+                org.webrtc.PeerConnection.PeerConnectionState.DISCONNECTED -> duty.viewerDisconnected(id)
+                org.webrtc.PeerConnection.PeerConnectionState.FAILED,
+                org.webrtc.PeerConnection.PeerConnectionState.CLOSED -> {
+                    closeViewer(id)
+                    duty.viewerClosed(id)
                 }
+                else -> {}
             }
         }
+        // Install the collector before connecting, so an early Offer is not lost.
+        serviceScope.launch(start = CoroutineStart.UNDISPATCHED) { observeSignaling(app) }
+        serviceScope.launch { app.signalingClient.startListening() }
+        serviceScope.launch {
+            manager.dataChannelCommands.collect { (peerId, cmd) -> handleViewerCommand(peerId, cmd) }
+        }
+        serviceScope.launch {
+            manager.activeViewersCount.collect { count ->
+                if (count > 0) startBatteryBroadcast() else stopBatteryBroadcast()
+            }
+        }
+        duty.start()
+    }
 
-        startInactivityTimer()
+    private fun closeViewer(id: String) {
+        remoteOffers.remove(id)
+        remoteAnswers.remove(id)
+        CamMonitorApp.instance.webRtcManager.closePeer(id)
     }
 
     private fun startBatteryBroadcast() {
@@ -206,37 +218,6 @@ class CameraMonitorService : Service() {
     private fun stopBatteryBroadcast() {
         batteryBroadcastJob?.cancel()
         batteryBroadcastJob = null
-    }
-
-    private fun startInactivityTimer() {
-        inactivityJob?.cancel()
-        // A single CameraX source must remain live for smart event detection
-        // even when no remote viewer is currently connected. Avoid stopping
-        // the shared capturer while it might be writing an event clip.
-        if (SmartEventSettings.isEnabled(this)) {
-            AppLogger.i(tag, "Smart monitoring active: continuous camera instead of viewer timeout")
-            return
-        }
-        inactivityJob = serviceScope.launch {
-            AppLogger.i(tag, "Inactivity timer started: 60s countdown until camera pause")
-            delay(60_000L) // 1 minute
-            AppLogger.i(tag, "0 viewers for 60s: Stopping camera and pausing")
-            CamMonitorApp.instance.webRtcManager.stopCameraCapture()
-            _streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
-            updateNotification(getString(R.string.notification_standby_waiting))
-        }
-    }
-
-    private fun cancelInactivityTimer() {
-        inactivityJob?.cancel()
-        inactivityJob = null
-    }
-
-    fun resumeStreamingFromPause() {
-        AppLogger.i(tag, "Resuming camera streaming from pause state")
-        CamMonitorApp.instance.webRtcManager.startCameraCapture()
-        _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
-        startInactivityTimer()
     }
 
     private suspend fun observeSignaling(app: CamMonitorApp) {
@@ -270,20 +251,17 @@ class CameraMonitorService : Service() {
         val startTime = System.currentTimeMillis()
         AppLogger.i(tag, "Processing WebRTC Offer from $senderId (activeViewers=${app.webRtcManager.activeViewersCount.value}, state=${_streamingState.value})")
 
-        // Auto-resume camera capture if paused due to inactivity
-        if (_streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
-            AppLogger.i(tag, "Camera was in PAUSED_INACTIVITY; resuming capture before responding to Offer")
-            resumeStreamingFromPause()
-        } else {
-            app.webRtcManager.startCameraCapture()
+        if (remoteOffers[senderId] == sdpStr) {
+            remoteAnswers[senderId]?.let { sendSignalingMessageToViewer(senderId, it) }
+            return
         }
-
-        // Cap max 2 viewers
-        if (app.webRtcManager.activeViewersCount.value >= 2) {
-            AppLogger.w(tag, "Rejecting connection from $senderId: Max 2 viewers reached")
+        // Acquire demand before opening the camera; CONNECTED count alone misses handshakes.
+        if (dutyCycle?.requestViewer(senderId) != true) {
             sendSignalingMessageToViewer(senderId, SignalingMessage.Reject("MAX_CAPACITY_REACHED"))
             return
         }
+        remoteOffers[senderId] = sdpStr
+        remoteAnswers.remove(senderId)
 
         val pc = app.webRtcManager.createPeerConnection(senderId) { candidate ->
             val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
@@ -292,6 +270,8 @@ class CameraMonitorService : Service() {
             sendSignalingMessageToViewer(senderId, iceMsg)
         } ?: run {
             AppLogger.e(tag, "Failed to create PeerConnection for $senderId")
+            closeViewer(senderId)
+            dutyCycle?.viewerClosed(senderId)
             return
         }
 
@@ -322,7 +302,12 @@ class CameraMonitorService : Service() {
                                                 cameraName = app.securityRepository.getDeviceName(),
                                                 fps = app.webRtcManager.streamFps.value
                                             )
-                                            sendSignalingMessageToViewer(senderId, answerMsg)
+                                            serviceScope.launch {
+                                                if (remoteOffers[senderId] == sdpStr) {
+                                                    remoteAnswers[senderId] = answerMsg
+                                                    sendSignalingMessageToViewer(senderId, answerMsg)
+                                                }
+                                            }
                                         } catch (t: Throwable) {
                                             AppLogger.e(tag, "Error in setLocalDescription.onSetSuccess for $senderId", t)
                                         }
@@ -441,7 +426,11 @@ class CameraMonitorService : Service() {
         AppLogger.i(tag, "CameraMonitorService destroyed")
         CamMonitorApp.instance.webRtcManager.onCameraUnexpectedClosed = null
         com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.restoreNormalMode(this)
-        cancelInactivityTimer()
+        dutyCycle?.stop()
+        dutyCycle = null
+        CamMonitorApp.instance.webRtcManager.onSmartRecordingChanged = null
+        CamMonitorApp.instance.webRtcManager.onSmartCameraIdle = null
+        CamMonitorApp.instance.webRtcManager.onPeerStateChanged = null
         stopBatteryBroadcast()
         serviceScope.cancel()
         CamMonitorApp.instance.webRtcManager.closeAll()
@@ -453,10 +442,13 @@ class CameraMonitorService : Service() {
             wifiLock?.release()
             wifiLock = null
         }
-        CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.Main.immediate).launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 CamMonitorApp.instance.signalingClient.stopListening()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                _monitoring.value = false
+            }
         }
     }
 }

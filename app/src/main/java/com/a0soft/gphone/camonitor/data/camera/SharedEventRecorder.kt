@@ -39,7 +39,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * All recording state mutations are posted onto the main thread. ML Kit work
  * is asynchronously scheduled from a single ImageAnalysis executor.
  */
-class SharedEventRecorder(private val context: Context) {
+class SharedEventRecorder(
+    private val context: Context,
+    private val onRecordingChanged: (Boolean) -> Unit = {},
+    private val onNoTarget: () -> Unit = {}
+) {
 
     enum class State { OFF, SCANNING, RECORDING, ERROR }
 
@@ -67,11 +71,13 @@ class SharedEventRecorder(private val context: Context) {
     private var capture: VideoCapture<Recorder>? = null
     private var analysis: ImageAnalysis? = null
     private var recording: Recording? = null
-    private var active = false
+    @Volatile private var active = false
     private var stopping = false
-    private var bindGeneration = 0L
+    @Volatile private var bindGeneration = 0L
     private var recordingStartedAt = 0L
     private var lastSeenAt = -1L
+    private var lastResultAt = 0L
+    private var lastResultHadTarget = false
     private var lastCheckedAt = 0L
 
     /** Must be called on main thread BEFORE CameraX bindToLifecycle. */
@@ -94,6 +100,7 @@ class SharedEventRecorder(private val context: Context) {
         state.value = State.SCANNING
         errorMessage.value = null
         lastSeenAt = -1L
+        lastResultAt = 0L
         lastCheckedAt = 0L
         scheduleStopCheck()
         return arrayOf(analyzer, video)
@@ -102,11 +109,9 @@ class SharedEventRecorder(private val context: Context) {
     @OptIn(ExperimentalGetImage::class)
     private fun inspect(frame: ImageProxy) {
         val now = SystemClock.elapsedRealtime()
-        // When idle, check approximately every 10 seconds. When recording,
-        // inspect frames frequently so the clip can end after absence grace.
-        val spacing = if (state.value == State.RECORDING) {
-            SmartRecordingPolicy.INFERENCE_SPACING_MS
-        } else SmartRecordingPolicy.SLEEP_MS
+        // Physical camera-off intervals are owned by CameraDutyCycle. While
+        // open, inspect promptly, including during a remote viewing session.
+        val spacing = SmartRecordingPolicy.INFERENCE_SPACING_MS
 
         if (!active || now - lastCheckedAt < spacing ||
             !busy.compareAndSet(false, true)) {
@@ -114,6 +119,7 @@ class SharedEventRecorder(private val context: Context) {
             return
         }
         lastCheckedAt = now
+        val generation = bindGeneration
         val rawImage = frame.image
         if (rawImage == null) {
             busy.set(false)
@@ -124,16 +130,24 @@ class SharedEventRecorder(private val context: Context) {
             labeler.process(
                 InputImage.fromMediaImage(rawImage, frame.imageInfo.rotationDegrees)
             ).addOnSuccessListener { labels ->
-                if (!active) return@addOnSuccessListener
+                if (!active || generation != bindGeneration) return@addOnSuccessListener
                 val detected = SmartRecordingPolicy.hasTarget(
                     labels.map { SmartLabel(it.text, it.confidence) }
                 )
-                if (detected) {
-                    val at = SystemClock.elapsedRealtime()
-                    handler.post {
-                        if (!active) return@post
+                val at = SystemClock.elapsedRealtime()
+                handler.post {
+                    if (!active || generation != bindGeneration) return@post
+                    if (lastResultAt == 0L || detected != lastResultHadTarget) {
+                        AppLogger.i("SharedEventRecorder", "Detection target=$detected; labels=" +
+                            labels.take(5).joinToString { "${it.text}:${"%.2f".format(Locale.US, it.confidence)}" })
+                    }
+                    lastResultAt = at
+                    lastResultHadTarget = detected
+                    if (detected) {
                         lastSeenAt = at
                         if (recording == null && !stopping) startEventRecording()
+                    } else if (recording == null && !stopping) {
+                        onNoTarget()
                     }
                 }
             }.addOnFailureListener { ex ->
@@ -186,9 +200,19 @@ class SharedEventRecorder(private val context: Context) {
                         }
                         AppLogger.i("SharedEventRecorder", "Saved ${file.name}")
                     }
+                    if (recordingGeneration == bindGeneration && active) {
+                        // A target can reappear between stop() and Finalize.
+                        // Start the next clip before releasing camera demand.
+                        if (SmartRecordingPolicy.restartAfterFinalize(
+                                event.hasError(), lastResultHadTarget, lastResultAt, SystemClock.elapsedRealtime())) {
+                            startEventRecording()
+                            if (recording == null) onRecordingChanged(false)
+                        } else onRecordingChanged(false)
+                    }
                 }
             }
             state.value = State.RECORDING
+            onRecordingChanged(true)
         } catch (e: Exception) {
             errorMessage.value = e.message
             state.value = State.ERROR
@@ -201,6 +225,7 @@ class SharedEventRecorder(private val context: Context) {
             if (!active) return
             val now = SystemClock.elapsedRealtime()
             if (recording != null && !stopping &&
+                !lastResultHadTarget && now - lastResultAt <= 2 * SmartRecordingPolicy.INFERENCE_SPACING_MS &&
                 now - recordingStartedAt >= SmartRecordingPolicy.ABSENCE_GRACE_MS &&
                 SmartRecordingPolicy.targetAbsentForLongEnough(lastSeenAt, now)) {
                 stopping = true
